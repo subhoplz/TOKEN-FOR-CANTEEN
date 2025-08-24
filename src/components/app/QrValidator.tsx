@@ -9,7 +9,7 @@ import { CheckCircle, QrCode, ShieldAlert, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { User } from '@/lib/types';
 
-interface ValidatedData extends User {
+interface ValidatedData extends Omit<User, 'transactions'> {
     signature: string;
 }
 
@@ -21,13 +21,13 @@ export default function QrValidator() {
 
     // This must be the same simple "hash" function as in the hook.
     // In a real app, this would be a proper cryptographic verification.
-    const validateSignature = (data: Omit<ValidatedData, 'signature' | 'transactions'>) => {
+    const validateSignature = (data: Omit<ValidatedData, 'signature'>) => {
         const dataString = `${data.id}|${data.employeeId}|${data.name}|${data.balance}|${data.lastUpdated}`;
         let hash = 0;
         for (let i = 0; i < dataString.length; i++) {
             const char = dataString.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash_ = hash & hash; // Convert to 32bit integer
+            hash = hash & hash; // Convert to 32bit integer
         }
         const expectedSignature = `sig-${hash}`;
         return data.signature === expectedSignature;

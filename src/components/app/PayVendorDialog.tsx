@@ -88,7 +88,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
                     <CheckCircle className="h-4 w-4 text-accent" />
                     <AlertTitle>Tokens Deducted & QR Generated</AlertTitle>
                     <AlertDescription>
-                        {amount} tokens have been deducted from your balance. The QR code contains the new balance.
+                        {amount} tokens have been deducted from your balance. The QR code contains the new balance and a secure signature.
                     </AlertDescription>
                 </Alert>
             </div>
