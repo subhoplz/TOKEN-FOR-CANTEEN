@@ -9,14 +9,14 @@ import { useRouter } from 'next/navigation';
 import BalanceCard from '@/components/app/BalanceCard';
 import MenuCard from '@/components/app/MenuCard';
 import { Button } from '@/components/ui/button';
-import { QrCode, History, UserSquare } from 'lucide-react';
+import { QrCode, History, UserSquare, LogOut } from 'lucide-react';
 import PayVendorDialog from '@/components/app/PayVendorDialog';
 import TransactionHistoryDialog from '@/components/app/TransactionHistoryDialog';
 import MyQrCodeDialog from '@/components/app/MyQrCodeDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export default function DashboardPage() {
-  const { loading, currentUser } = useCanteenPass();
+  const { loading, currentUser, logout } = useCanteenPass();
   const router = useRouter();
 
   const [payVendorOpen, setPayVendorOpen] = useState(false);
@@ -28,6 +28,11 @@ export default function DashboardPage() {
       router.push('/login/user');
     }
   }, [loading, currentUser, router]);
+
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  }
 
   const getInitials = (name: string) => {
     const names = name.split(' ');
@@ -89,7 +94,10 @@ export default function DashboardPage() {
                     <History className="mr-2 h-6 w-6" /> View History
                 </Button>
             </div>
-
+            
+            <Button variant="link" className='text-muted-foreground' onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" /> Logout
+            </Button>
         </div>
       </main>
     </div>
