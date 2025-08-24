@@ -18,10 +18,7 @@ export default function AdminLoginPage() {
     const handleLogin = () => {
         if (selectedUser) {
             switchUser(selectedUser);
-            const user = users.find(u => u.id === selectedUser);
-            if (user?.role === 'admin') {
-                router.push('/admin');
-            }
+            router.push('/admin');
         }
     };
     
