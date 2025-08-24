@@ -24,10 +24,18 @@ interface AiSuggestionDialogProps {
 export default function AiSuggestionDialog({ open, onOpenChange }: AiSuggestionDialogProps) {
   const [suggestion, setSuggestion] = useState<SuggestTokenPurchaseOutput | null>(null);
   const [loading, setLoading] = useState(false);
-  const { balance, getSpendingHabits } = useCanteenPass();
+  const { balance, getSpendingHabits, currentUser } = useCanteenPass();
   const { toast } = useToast();
 
   const handleGetSuggestion = async () => {
+    if (!currentUser) {
+      toast({
+        title: 'No User Selected',
+        description: 'Cannot get suggestion without an active user.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setLoading(true);
     setSuggestion(null);
     try {
@@ -92,7 +100,7 @@ export default function AiSuggestionDialog({ open, onOpenChange }: AiSuggestionD
             </div>
         ) : (
             <div className='flex items-center justify-center h-40'>
-                 <Button onClick={handleGetSuggestion} disabled={loading}>
+                 <Button onClick={handleGetSuggestion} disabled={loading || !currentUser}>
                     {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analyzing...</> : "Get my suggestion"}
                 </Button>
             </div>
@@ -100,7 +108,6 @@ export default function AiSuggestionDialog({ open, onOpenChange }: AiSuggestionD
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>Close</Button>
-          {!loading && !suggestion && <Button onClick={handleGetSuggestion}>Get Suggestion</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

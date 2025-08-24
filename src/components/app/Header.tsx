@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { UtensilsCrossed } from 'lucide-react';
+import { UtensilsCrossed, Shield } from 'lucide-react';
 
 export default function Header() {
   return (
@@ -13,9 +13,12 @@ export default function Header() {
             <UtensilsCrossed className="h-7 w-7" />
             <span className="font-headline">CanteenPass</span>
           </Link>
-          <nav>
+          <nav className='flex items-center gap-2'>
             <Button variant="ghost" asChild>
               <Link href="/vendor">Vendor Mode</Link>
+            </Button>
+            <Button variant="outline" asChild className='border-primary/50 text-primary hover:bg-primary/10 hover:text-primary'>
+              <Link href="/admin"><Shield className='mr-2'/> Admin Panel</Link>
             </Button>
           </nav>
         </div>

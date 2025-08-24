@@ -5,3 +5,10 @@ export interface Transaction {
   description: string;
   timestamp: number;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  balance: number;
+  transactions: Transaction[];
+}

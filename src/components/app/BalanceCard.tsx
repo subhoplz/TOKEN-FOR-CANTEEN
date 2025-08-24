@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Wallet } from 'lucide-react';
 
 export default function BalanceCard() {
-  const { balance, user } = useCanteenPass();
+  const { balance, currentUser } = useCanteenPass();
 
   return (
     <Card className="shadow-lg rounded-xl overflow-hidden bg-gradient-to-br from-primary to-blue-400 text-primary-foreground">
@@ -18,7 +18,7 @@ export default function BalanceCard() {
           {balance.toLocaleString()} Tokens
         </div>
         <p className="text-xs text-primary-foreground/80 pt-2">
-          Welcome, {user.name}
+          Welcome, {currentUser?.name || 'User'}
         </p>
       </CardContent>
     </Card>

@@ -1,41 +1,57 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import type { Transaction } from '@/lib/types';
+import type { Transaction, User } from '@/lib/types';
 import { useToast } from './use-toast';
 
 interface CanteenPassContextType {
   loading: boolean;
+  users: User[];
+  currentUser: User | null;
   balance: number;
   transactions: Transaction[];
-  user: { id: string; name: string };
+  addUser: (name: string) => void;
   addTokens: (amount: number) => void;
   spendTokens: (amount: number, description: string) => { success: boolean; data: string | null };
   getSpendingHabits: () => string;
+  switchUser: (userId: string) => void;
 }
 
 export const CanteenPassContext = createContext<CanteenPassContextType | undefined>(undefined);
 
+const initialUser: User = { 
+  id: `user-alex-doe`, 
+  name: 'Alex Doe', 
+  balance: 100, 
+  transactions: [] 
+};
+
 export function useCanteenPassState() {
   const [loading, setLoading] = useState(true);
-  const [balance, setBalance] = useState(100);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const user = { id: `user-${Math.random().toString(36).substr(2, 9)}`, name: 'Alex Doe' };
+  const [users, setUsers] = useState<User[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     try {
-      const storedBalance = localStorage.getItem('canteen-balance');
-      const storedTransactions = localStorage.getItem('canteen-transactions');
-      if (storedBalance) {
-        setBalance(JSON.parse(storedBalance));
+      const storedUsers = localStorage.getItem('canteen-users');
+      const storedCurrentUserId = localStorage.getItem('canteen-current-user-id');
+      
+      let loadedUsers: User[] = storedUsers ? JSON.parse(storedUsers) : [initialUser];
+      if (loadedUsers.length === 0) {
+        loadedUsers = [initialUser];
       }
-      if (storedTransactions) {
-        setTransactions(JSON.parse(storedTransactions));
-      }
+      setUsers(loadedUsers);
+
+      let currentUserId = storedCurrentUserId ? JSON.parse(storedCurrentUserId) : loadedUsers[0].id;
+      const userToSet = loadedUsers.find(u => u.id === currentUserId) || loadedUsers[0];
+      setCurrentUser(userToSet);
+
     } catch (error) {
       console.error("Failed to load from local storage", error);
       toast({ title: "Error", description: "Could not load your data.", variant: "destructive" });
+      setUsers([initialUser]);
+      setCurrentUser(initialUser);
     } finally {
       setLoading(false);
     }
@@ -44,17 +60,50 @@ export function useCanteenPassState() {
   useEffect(() => {
     if (!loading) {
       try {
-        localStorage.setItem('canteen-balance', JSON.stringify(balance));
-        localStorage.setItem('canteen-transactions', JSON.stringify(transactions));
+        localStorage.setItem('canteen-users', JSON.stringify(users));
+        if (currentUser) {
+          localStorage.setItem('canteen-current-user-id', JSON.stringify(currentUser.id));
+        }
       } catch (error) {
         console.error("Failed to save to local storage", error);
         toast({ title: "Error", description: "Could not save your data.", variant: "destructive" });
       }
     }
-  }, [balance, transactions, loading, toast]);
+  }, [users, currentUser, loading, toast]);
+
+  const updateUserInList = (updatedUser: User) => {
+    setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
+  };
+  
+  const addUser = useCallback((name: string) => {
+    const newUser: User = {
+      id: `user-${name.toLowerCase().replace(/\s/g, '-')}-${Math.random().toString(36).substr(2, 5)}`,
+      name,
+      balance: 0,
+      transactions: [],
+    };
+    setUsers(prev => [...prev, newUser]);
+    toast({
+      title: "User Added",
+      description: `${name} has been added to the system.`,
+    });
+  }, [toast]);
+
+  const switchUser = useCallback((userId: string) => {
+    const userToSwitch = users.find(u => u.id === userId);
+    if(userToSwitch) {
+      setCurrentUser(userToSwitch);
+      toast({
+        title: "User Switched",
+        description: `You are now managing the app as ${userToSwitch.name}.`,
+      });
+    }
+  }, [users, toast]);
 
   const addTokens = useCallback((amount: number) => {
+    if (!currentUser) return;
     if (amount <= 0) return;
+
     const newTransaction: Transaction = {
       id: crypto.randomUUID(),
       type: 'credit',
@@ -62,17 +111,26 @@ export function useCanteenPassState() {
       description: 'Self-assigned tokens',
       timestamp: Date.now(),
     };
-    setBalance((prev) => prev + amount);
-    setTransactions((prev) => [newTransaction, ...prev]);
+    
+    const updatedUser = {
+      ...currentUser,
+      balance: currentUser.balance + amount,
+      transactions: [newTransaction, ...currentUser.transactions],
+    };
+
+    setCurrentUser(updatedUser);
+    updateUserInList(updatedUser);
+
     toast({
       title: "Success",
-      description: `${amount} tokens added to your account.`,
+      description: `${amount} tokens added to ${currentUser.name}'s account.`,
     });
-  }, [toast]);
+  }, [currentUser, toast]);
 
   const spendTokens = useCallback((amount: number, description: string) => {
+    if (!currentUser) return { success: false, data: "No active user." };
     if (amount <= 0) return { success: false, data: "Amount must be positive." };
-    if (balance < amount) return { success: false, data: "Insufficient balance." };
+    if (currentUser.balance < amount) return { success: false, data: "Insufficient balance." };
 
     const newTransaction: Transaction = {
       id: crypto.randomUUID(),
@@ -81,22 +139,29 @@ export function useCanteenPassState() {
       description,
       timestamp: Date.now(),
     };
-    setBalance((prev) => prev - amount);
-    setTransactions((prev) => [newTransaction, ...prev]);
+    
+    const updatedUser = {
+      ...currentUser,
+      balance: currentUser.balance - amount,
+      transactions: [newTransaction, ...currentUser.transactions],
+    };
+
+    setCurrentUser(updatedUser);
+    updateUserInList(updatedUser);
     
     const qrData = {
         transactionId: newTransaction.id,
-        userId: user.id,
+        userId: currentUser.id,
         amount,
         description,
         timestamp: newTransaction.timestamp,
     };
 
     return { success: true, data: JSON.stringify(qrData, null, 2) };
-
-  }, [balance, user.id]);
+  }, [currentUser]);
 
   const getSpendingHabits = useCallback(() => {
+    const transactions = currentUser?.transactions || [];
     const debitTransactions = transactions.filter(t => t.type === 'debit');
     if (debitTransactions.length < 3) {
       return "Not enough spending history to make a suggestion. Please make a few more purchases.";
@@ -107,10 +172,20 @@ export function useCanteenPassState() {
     const frequency = debitTransactions.length / (days || 1);
 
     return `User has made ${debitTransactions.length} purchases. Average purchase amount is ${avgSpent.toFixed(2)} tokens. They spend tokens approximately ${frequency.toFixed(1)} times a day.`;
-  }, [transactions]);
+  }, [currentUser]);
 
-
-  return { loading, balance, transactions, user, addTokens, spendTokens, getSpendingHabits };
+  return { 
+    loading, 
+    users,
+    currentUser,
+    balance: currentUser?.balance ?? 0,
+    transactions: currentUser?.transactions ?? [],
+    addUser,
+    addTokens, 
+    spendTokens, 
+    getSpendingHabits,
+    switchUser,
+  };
 }
 
 export function CanteenPassProvider({ children }: { children: ReactNode }) {

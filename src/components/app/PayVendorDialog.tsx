@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle, QrCode, Terminal } from 'lucide-react';
+import { CheckCircle, QrCode } from 'lucide-react';
 
 interface PayVendorDialogProps {
   open: boolean;
@@ -27,10 +27,14 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [qrData, setQrData] = useState<string | null>(null);
-  const { balance, spendTokens } = useCanteenPass();
+  const { balance, spendTokens, currentUser } = useCanteenPass();
   const { toast } = useToast();
 
   const handleGenerateQR = () => {
+    if (!currentUser) {
+        toast({ title: 'No User Active', description: 'Please select a user first.', variant: 'destructive' });
+        return;
+    }
     const numericAmount = parseInt(amount, 10);
     if (isNaN(numericAmount) || numericAmount <= 0) {
       toast({ title: 'Invalid Amount', description: 'Please enter a positive number.', variant: 'destructive' });
@@ -49,7 +53,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
     if (result.success && result.data) {
         setQrData(result.data);
     } else {
-        toast({ title: 'Payment Failed', description: result.data, variant: 'destructive' });
+        toast({ title: 'Payment Failed', description: result.data || 'An unknown error occurred.', variant: 'destructive' });
     }
   };
   
@@ -91,7 +95,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
             <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="amount" className="text-right">Amount</Label>
-                    <Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="col-span-3" placeholder="e.g., 25" />
+                    <Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.targe.value)} className="col-span-3" placeholder="e.g., 25" />
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="description" className="text-right">For</Label>
@@ -103,7 +107,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
             {qrData ? (
                 <Button onClick={handleClose}>Done</Button>
             ) : (
-                <Button onClick={handleGenerateQR}>
+                <Button onClick={handleGenerateQR} disabled={!currentUser}>
                     <QrCode className='mr-2 h-4 w-4' /> Generate QR Code
                 </Button>
             )}
