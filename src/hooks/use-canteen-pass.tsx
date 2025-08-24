@@ -24,12 +24,13 @@ const initialUsers: User[] = [
     { id: 'user-alex-doe', name: 'Alex Doe', balance: 100, transactions: [], role: 'user' },
     { id: 'user-jane-doe', name: 'Jane Doe', balance: 250, transactions: [], role: 'user' },
     { id: 'admin-main', name: 'Main Admin', balance: 0, transactions: [], role: 'admin' },
+    { id: 'admin-canteen', name: 'Canteen Admin', balance: 0, transactions: [], role: 'admin' },
 ];
 
 
 export function useCanteenPassState() {
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[]>(initialUsers);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
 
@@ -38,9 +39,12 @@ export function useCanteenPassState() {
       const storedUsers = localStorage.getItem('canteen-users');
       const storedCurrentUserId = localStorage.getItem('canteen-current-user-id');
       
-      let loadedUsers: User[] = storedUsers ? JSON.parse(storedUsers) : initialUsers;
-      if (loadedUsers.length === 0) {
-        loadedUsers = initialUsers;
+      let loadedUsers: User[] = initialUsers;
+      if (storedUsers) {
+        const parsedUsers = JSON.parse(storedUsers);
+        if (parsedUsers.length > 0) {
+            loadedUsers = parsedUsers;
+        }
       }
       setUsers(loadedUsers);
 
@@ -53,7 +57,7 @@ export function useCanteenPassState() {
     } catch (error) {
       console.error("Failed to load from local storage", error);
       toast({ title: "Error", description: "Could not load your data.", variant: "destructive" });
-      setUsers(initialUsers);
+      setUsers(initialUsers); // Fallback to initial users on error
       setCurrentUser(null);
     } finally {
       setLoading(false);
