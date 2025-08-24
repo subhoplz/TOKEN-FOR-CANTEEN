@@ -1,18 +1,11 @@
+
 "use client";
 
-import {
-    Sidebar,
-    SidebarContent,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuItem,
-    SidebarMenuButton,
-    SidebarMenuSeparator,
-    SidebarProvider
-} from "@/components/ui/sidebar";
-import { BarChart, Cog, HardDrive, Home, Newspaper, QrCode, Ticket, Users, UtensilsCrossed } from "lucide-react";
+import { useCanteenPass } from "@/hooks/use-canteen-pass";
+import { Button } from "@/components/ui/button";
+import { BarChart, Cog, HardDrive, Home, LogOut, Newspaper, QrCode, Ticket, Users, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const menuItems = [
     {
@@ -72,6 +65,13 @@ const menuItems = [
 
 export default function AdminSidebar() {
     const pathname = usePathname();
+    const { logout } = useCanteenPass();
+    const router = useRouter();
+
+    const handleLogout = () => {
+        logout();
+        router.push('/login');
+    }
     
     return (
        <aside className="h-screen sticky top-0 border-r bg-card hidden md:block w-64">
@@ -99,6 +99,12 @@ export default function AdminSidebar() {
                             )
                         ))}
                     </nav>
+                </div>
+                 <div className="mt-auto p-4">
+                    <Button variant="outline" className="w-full" onClick={handleLogout}>
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Logout
+                    </Button>
                 </div>
            </div>
        </aside>
