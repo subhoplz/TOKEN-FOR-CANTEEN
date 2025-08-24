@@ -15,16 +15,17 @@ interface CanteenPassContextType {
   spendTokens: (amount: number, description: string) => { success: boolean; data: string | null };
   getSpendingHabits: () => string;
   switchUser: (userId: string) => void;
+  logout: () => void;
 }
 
 export const CanteenPassContext = createContext<CanteenPassContextType | undefined>(undefined);
 
-const initialUser: User = { 
-  id: `user-alex-doe`, 
-  name: 'Alex Doe', 
-  balance: 100, 
-  transactions: [] 
-};
+const initialUsers: User[] = [
+    { id: 'user-alex-doe', name: 'Alex Doe', balance: 100, transactions: [], role: 'user' },
+    { id: 'user-jane-doe', name: 'Jane Doe', balance: 250, transactions: [], role: 'user' },
+    { id: 'admin-main', name: 'Main Admin', balance: 0, transactions: [], role: 'admin' },
+];
+
 
 export function useCanteenPassState() {
   const [loading, setLoading] = useState(true);
@@ -37,21 +38,23 @@ export function useCanteenPassState() {
       const storedUsers = localStorage.getItem('canteen-users');
       const storedCurrentUserId = localStorage.getItem('canteen-current-user-id');
       
-      let loadedUsers: User[] = storedUsers ? JSON.parse(storedUsers) : [initialUser];
+      let loadedUsers: User[] = storedUsers ? JSON.parse(storedUsers) : initialUsers;
       if (loadedUsers.length === 0) {
-        loadedUsers = [initialUser];
+        loadedUsers = initialUsers;
       }
       setUsers(loadedUsers);
 
-      let currentUserId = storedCurrentUserId ? JSON.parse(storedCurrentUserId) : loadedUsers[0].id;
-      const userToSet = loadedUsers.find(u => u.id === currentUserId) || loadedUsers[0];
-      setCurrentUser(userToSet);
+      if (storedCurrentUserId) {
+          const currentUserId = JSON.parse(storedCurrentUserId);
+          const userToSet = loadedUsers.find(u => u.id === currentUserId);
+          setCurrentUser(userToSet || null);
+      }
 
     } catch (error) {
       console.error("Failed to load from local storage", error);
       toast({ title: "Error", description: "Could not load your data.", variant: "destructive" });
-      setUsers([initialUser]);
-      setCurrentUser(initialUser);
+      setUsers(initialUsers);
+      setCurrentUser(null);
     } finally {
       setLoading(false);
     }
@@ -63,6 +66,8 @@ export function useCanteenPassState() {
         localStorage.setItem('canteen-users', JSON.stringify(users));
         if (currentUser) {
           localStorage.setItem('canteen-current-user-id', JSON.stringify(currentUser.id));
+        } else {
+            localStorage.removeItem('canteen-current-user-id');
         }
       } catch (error) {
         console.error("Failed to save to local storage", error);
@@ -81,6 +86,7 @@ export function useCanteenPassState() {
       name,
       balance: 0,
       transactions: [],
+      role: 'user'
     };
     setUsers(prev => [...prev, newUser]);
     toast({
@@ -94,11 +100,19 @@ export function useCanteenPassState() {
     if(userToSwitch) {
       setCurrentUser(userToSwitch);
       toast({
-        title: "User Switched",
-        description: `You are now managing the app as ${userToSwitch.name}.`,
+        title: "Login Successful",
+        description: `Welcome, ${userToSwitch.name}.`,
       });
     }
   }, [users, toast]);
+
+  const logout = useCallback(() => {
+    setCurrentUser(null);
+    toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out."
+    });
+  }, [toast]);
 
   const addTokens = useCallback((amount: number) => {
     if (!currentUser) return;
@@ -185,6 +199,7 @@ export function useCanteenPassState() {
     spendTokens, 
     getSpendingHabits,
     switchUser,
+    logout,
   };
 }
 

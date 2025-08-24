@@ -5,9 +5,10 @@ import { useCanteenPass } from '@/hooks/use-canteen-pass';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Users } from 'lucide-react';
+import { PlusCircle, Users, Shield } from 'lucide-react';
 import AddUserDialog from './AddUserDialog';
 import { User } from '@/lib/types';
+import { Badge } from '../ui/badge';
 
 export default function UserManagement() {
   const { users, switchUser, currentUser } = useCanteenPass();
@@ -31,6 +32,7 @@ export default function UserManagement() {
               <TableRow>
                 <TableHead>User ID</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead>Role</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead className="text-center">Actions</TableHead>
               </TableRow>
@@ -40,6 +42,12 @@ export default function UserManagement() {
                 <TableRow key={user.id} className={currentUser?.id === user.id ? 'bg-secondary' : ''}>
                   <TableCell className="font-mono text-xs">{user.id}</TableCell>
                   <TableCell className="font-medium">{user.name}</TableCell>
+                  <TableCell>
+                    <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                        {user.role === 'admin' && <Shield className='mr-1 h-3 w-3'/>}
+                        {user.role}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right font-semibold">{user.balance} Tokens</TableCell>
                   <TableCell className="text-center">
                     <Button 

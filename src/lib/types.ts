@@ -11,4 +11,5 @@ export interface User {
   name: string;
   balance: number;
   transactions: Transaction[];
+  role: 'user' | 'admin';
 }

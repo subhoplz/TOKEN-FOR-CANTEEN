@@ -45,7 +45,7 @@ export default function AddUserDialog({ open, onOpenChange }: AddUserDialogProps
         <DialogHeader>
           <DialogTitle>Add New User</DialogTitle>
           <DialogDescription>
-            Create a new user account. They will start with a balance of 0 tokens.
+            Create a new user account. They will start with a balance of 0 tokens and a 'user' role.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
