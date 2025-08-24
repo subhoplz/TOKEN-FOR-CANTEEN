@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -49,7 +50,6 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
         return;
     }
 
-    // Note: spendTokens now deducts the balance locally and generates the QR data.
     const result = spendTokens(numericAmount, description);
     if (result.success && result.data) {
         setQrData(result.data);
@@ -69,7 +69,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Generate Payment QR Code</DialogTitle>
+          <DialogTitle>Scan Vendor QR</DialogTitle>
           <DialogDescription>
             {qrData ? 'Show this QR code to the vendor to complete your payment.' : 'Enter payment details to generate a QR code for offline validation.'}
           </DialogDescription>
@@ -109,7 +109,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
                 <Button onClick={handleClose}>Done</Button>
             ) : (
                 <Button onClick={handleGenerateQR} disabled={!currentUser}>
-                    <QrCode className='mr-2 h-4 w-4' /> Generate QR Code
+                    <QrCode className='mr-2 h-4 w-4' /> Generate Payment QR
                 </Button>
             )}
         </DialogFooter>

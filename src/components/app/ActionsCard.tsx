@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from '@/components/ui/button';
@@ -24,7 +25,7 @@ export default function ActionsCard() {
             <PlusCircle className="mr-2 h-5 w-5" /> Add Tokens
             </Button>
             <Button size="lg" className="w-full justify-start" onClick={() => setPayVendorOpen(true)}>
-            <QrCode className="mr-2 h-5 w-5" /> Pay Vendor
+            <QrCode className="mr-2 h-5 w-5" /> Scan QR
             </Button>
             <Button size="lg" variant="outline" className="w-full justify-start" onClick={() => setAiSuggestionOpen(true)}>
             <Sparkles className="mr-2 h-5 w-5 text-primary" /> Get Suggestion

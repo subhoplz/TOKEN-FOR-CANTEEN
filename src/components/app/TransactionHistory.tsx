@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCanteenPass } from '@/hooks/use-canteen-pass';
@@ -12,7 +13,7 @@ export default function TransactionHistory() {
   const { transactions } = useCanteenPass();
 
   return (
-    <Card className="shadow-md rounded-xl h-full">
+    <Card className="shadow-md rounded-xl h-full border-none">
       <CardHeader>
         <CardTitle>Transaction History</CardTitle>
         <CardDescription>A record of your recent token activity.</CardDescription>
