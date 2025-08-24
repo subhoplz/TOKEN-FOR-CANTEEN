@@ -10,12 +10,12 @@ interface CanteenPassContextType {
   currentUser: User | null;
   balance: number;
   transactions: Transaction[];
-  addUser: (name: string, employeeId: string, role?: 'user' | 'admin') => void;
+  addUser: (name: string, employeeId: string, role?: 'user' | 'admin', password?: string) => void;
   addTokens: (amount: number) => void;
   addTokensToUser: (userId: string, amount: number) => void;
   spendTokens: (amount: number, description: string) => { success: boolean; data: string | null };
   getSpendingHabits: () => string;
-  switchUser: (userId: string) => void;
+  switchUser: (userId: string, password?: string) => void;
   logout: () => void;
   deleteUser: (userId: string) => void;
   editUser: (userId: string, name: string, employeeId: string) => void;
@@ -24,11 +24,10 @@ interface CanteenPassContextType {
 export const CanteenPassContext = createContext<CanteenPassContextType | undefined>(undefined);
 
 const initialUsers: User[] = [
-    { id: 'user-alex-doe', employeeId: 'E12345', name: 'Alex Doe', balance: 100, transactions: [], role: 'user', lastUpdated: Date.now() },
-    { id: 'user-jane-doe', employeeId: 'E67890', name: 'Jane Doe', balance: 250, transactions: [], role: 'user', lastUpdated: Date.now() },
-    { id: 'admin-main', employeeId: 'A00001', name: 'Main Admin', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
-    { id: 'admin-canteen', employeeId: 'A00002', name: 'Canteen Admin', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
-    { id: 'admin-new', employeeId: 'A00003', name: 'New Admin', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
+    { id: 'user-alex-doe', employeeId: 'E12345', name: 'Alex Doe', password: 'password', balance: 100, transactions: [], role: 'user', lastUpdated: Date.now() },
+    { id: 'user-jane-doe', employeeId: 'E67890', name: 'Jane Doe', password: 'password', balance: 250, transactions: [], role: 'user', lastUpdated: Date.now() },
+    { id: 'admin-main', employeeId: 'A00001', name: 'Main Admin', password: 'password', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
+    { id: 'admin-canteen', employeeId: 'A00002', name: 'Canteen Admin', password: 'password', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
 ];
 
 
@@ -38,10 +37,9 @@ export function useCanteenPassState() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
 
-  // Very simple "hash" function for the digital signature. 
-  // In a real app, a proper cryptographic library should be used.
-  const createSignature = (data: Omit<User, 'transactions'>) => {
-    const dataString = `${data.id}|${data.employeeId}|${data.name}|${data.balance}|${data.lastUpdated}`;
+  // This is a simplified "hash" for demonstration. In a real app, use a proper crypto library.
+  const createSignature = (data: { employee_id: string, timestamp: string }) => {
+    const dataString = `${data.employee_id}|${data.timestamp}`;
     let hash = 0;
     for (let i = 0; i < dataString.length; i++) {
         const char = dataString.charCodeAt(i);
@@ -105,11 +103,12 @@ export function useCanteenPassState() {
     setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
   };
   
-  const addUser = useCallback((name: string, employeeId: string, role: 'user' | 'admin' = 'user') => {
+  const addUser = useCallback((name: string, employeeId: string, role: 'user' | 'admin' = 'user', password?: string) => {
     const newUser: User = {
       id: `${role}-${name.toLowerCase().replace(/\s/g, '-')}-${Math.random().toString(36).substr(2, 5)}`,
       employeeId,
       name,
+      password: password,
       balance: role === 'admin' ? 0 : 0, // Admins always have 0 balance
       transactions: [],
       role: role,
@@ -122,14 +121,28 @@ export function useCanteenPassState() {
     });
   }, [toast]);
 
-  const switchUser = useCallback((userId: string) => {
+  const switchUser = useCallback((userId: string, password?: string) => {
     const userToSwitch = users.find(u => u.id === userId);
     if(userToSwitch) {
+      if (userToSwitch.role !== 'admin' && userToSwitch.password && userToSwitch.password !== password) {
+          toast({
+              title: "Login Failed",
+              description: "The password you entered is incorrect.",
+              variant: "destructive",
+          });
+          return;
+      }
       setCurrentUser(userToSwitch);
       toast({
         title: "Login Successful",
         description: `Welcome, ${userToSwitch.name}.`,
       });
+    } else {
+        toast({
+            title: "Login Failed",
+            description: "User not found.",
+            variant: "destructive",
+        });
     }
   }, [users, toast]);
 
@@ -187,7 +200,6 @@ export function useCanteenPassState() {
             lastUpdated: Date.now(),
           };
           
-          // If the funded user is the current user, update the context
           if(currentUser?.id === userId) {
               setCurrentUser(updatedUser);
           }
@@ -229,12 +241,22 @@ export function useCanteenPassState() {
     setCurrentUser(updatedUser);
     updateUserInList(updatedUser);
     
-    const { transactions, ...userForQr } = updatedUser;
-    const signature = createSignature(userForQr);
+    const qrPayload = {
+      employee_id: updatedUser.employeeId,
+      timestamp: new Date(updatedUser.lastUpdated).toISOString(),
+    };
+    const signature = createSignature(qrPayload);
     
     const qrData = {
-        ...userForQr,
-        signature,
+        ...qrPayload,
+        device_signature: signature,
+        // For validation convenience, we can add non-signed data
+        name: updatedUser.name,
+        balance: updatedUser.balance,
+        transaction: {
+          amount: newTransaction.amount,
+          description: newTransaction.description
+        }
     };
 
     return { success: true, data: JSON.stringify(qrData, null, 2) };
@@ -291,7 +313,6 @@ export function useCanteenPassState() {
      });
   }, [currentUser?.id, toast]);
 
-  // Aggregate all transactions for admin view
   const allTransactions = users.flatMap(u => u.transactions);
 
 
@@ -300,7 +321,7 @@ export function useCanteenPassState() {
     users,
     currentUser,
     balance: currentUser?.balance ?? 0,
-    transactions: currentUser?.role === 'admin' ? allTransactions : (currentUser?.transactions ?? []),
+    transactions: currentUser?.role === 'admin' ? allTransactions.sort((a,b) => b.timestamp - a.timestamp) : (currentUser?.transactions ?? []),
     addUser,
     addTokens, 
     addTokensToUser,

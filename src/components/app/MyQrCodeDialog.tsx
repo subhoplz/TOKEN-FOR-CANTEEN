@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCanteenPass } from '@/hooks/use-canteen-pass';
@@ -24,17 +23,35 @@ export default function MyQrCodeDialog({ open, onOpenChange }: MyQrCodeDialogPro
   const { currentUser } = useCanteenPass();
   const [qrData, setQrData] = useState<string | null>(null);
 
+  // This is a simplified "hash" for demonstration. In a real app, use a proper crypto library.
+  const createSignature = (data: { employee_id: string, timestamp: string }) => {
+    const dataString = `${data.employee_id}|${data.timestamp}`;
+    let hash = 0;
+    for (let i = 0; i < dataString.length; i++) {
+        const char = dataString.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return `sig-${hash}`;
+  };
+
   useEffect(() => {
     if (currentUser) {
-      // The QR code for identification only needs the user's unique ID.
-      const userData = {
-        id: currentUser.id,
-        name: currentUser.name,
-        employeeId: currentUser.employeeId,
+      const timestamp = new Date().toISOString();
+      const qrPayload = {
+        employee_id: currentUser.employeeId,
+        timestamp: timestamp,
       }
-      setQrData(JSON.stringify(userData, null, 2));
+      const signature = createSignature(qrPayload);
+
+      const fullQrData = {
+        ...qrPayload,
+        device_signature: signature
+      }
+      
+      setQrData(JSON.stringify(fullQrData, null, 2));
     }
-  }, [currentUser]);
+  }, [currentUser, open]);
 
 
   return (
@@ -45,7 +62,7 @@ export default function MyQrCodeDialog({ open, onOpenChange }: MyQrCodeDialogPro
             <UserSquare /> My Personal QR Code
             </DialogTitle>
           <DialogDescription>
-            An admin or vendor can scan this code to identify your account or assign tokens to you.
+            An admin or vendor can scan this to identify you, even when offline.
           </DialogDescription>
         </DialogHeader>
         <div className='flex flex-col items-center gap-4 py-4'>

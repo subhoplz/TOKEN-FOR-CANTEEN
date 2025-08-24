@@ -7,22 +7,34 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, QrCode, ShieldAlert, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import { User } from '@/lib/types';
+import { useCanteenPass } from '@/hooks/use-canteen-pass';
 
-interface ValidatedData extends Omit<User, 'transactions'> {
-    signature: string;
+// This mirrors the structure from the QR generation
+interface QrCodeData {
+    employee_id: string;
+    timestamp: string;
+    device_signature: string;
+    // Optional fields for display
+    name?: string;
+    balance?: number;
+    transaction?: {
+        amount: number;
+        description: string;
+    }
 }
 
 export default function QrValidator() {
     const [qrInput, setQrInput] = useState('');
-    const [validatedData, setValidatedData] = useState<ValidatedData | null>(null);
+    const [validatedData, setValidatedData] = useState<QrCodeData | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [signatureValid, setSignatureValid] = useState(false);
+    const { users } = useCanteenPass();
+
 
     // This must be the same simple "hash" function as in the hook.
     // In a real app, this would be a proper cryptographic verification.
-    const validateSignature = (data: Omit<ValidatedData, 'signature'>) => {
-        const dataString = `${data.id}|${data.employeeId}|${data.name}|${data.balance}|${data.lastUpdated}`;
+    const validateSignature = (data: QrCodeData) => {
+        const dataString = `${data.employee_id}|${data.timestamp}`;
         let hash = 0;
         for (let i = 0; i < dataString.length; i++) {
             const char = dataString.charCodeAt(i);
@@ -30,7 +42,7 @@ export default function QrValidator() {
             hash = hash & hash; // Convert to 32bit integer
         }
         const expectedSignature = `sig-${hash}`;
-        return data.signature === expectedSignature;
+        return data.device_signature === expectedSignature;
     };
 
     const handleValidate = () => {
@@ -44,16 +56,22 @@ export default function QrValidator() {
         }
 
         try {
-            const parsed = JSON.parse(qrInput) as ValidatedData;
+            const parsed = JSON.parse(qrInput) as QrCodeData;
             
-            // Basic validation for all required fields
-            const requiredFields: (keyof ValidatedData)[] = ['id', 'employeeId', 'name', 'balance', 'role', 'lastUpdated', 'signature'];
+            const requiredFields: (keyof QrCodeData)[] = ['employee_id', 'timestamp', 'device_signature'];
             const missingField = requiredFields.find(field => !(field in parsed));
             if (missingField) {
                 throw new Error(`Missing required field in QR data: ${missingField}`);
             }
+
+            const userInDb = users.find(u => u.employeeId === parsed.employee_id);
             
-            setValidatedData(parsed);
+            // For display purposes, merge known data with QR data
+            const displayData = {
+                ...parsed,
+                name: parsed.name || userInDb?.name || 'Unknown User',
+            };
+            setValidatedData(displayData);
             
             const isValid = validateSignature(parsed);
             setSignatureValid(isValid);
@@ -94,9 +112,9 @@ export default function QrValidator() {
                                 {signatureValid ? (
                                     <Alert className='bg-accent/10 border-accent text-accent-foreground'>
                                         <CheckCircle className="h-4 w-4 text-accent" />
-                                        <AlertTitle className='text-accent-foreground/90'>Payment Data Validated</AlertTitle>
+                                        <AlertTitle className='text-accent-foreground/90'>Signature Valid & Data Verified</AlertTitle>
                                         <AlertDescription className='text-accent-foreground/80'>
-                                            The digital signature is valid.
+                                            The digital signature is authentic.
                                         </AlertDescription>
                                     </Alert>
                                 ) : (
@@ -104,19 +122,23 @@ export default function QrValidator() {
                                         <ShieldAlert className="h-4 w-4" />
                                         <AlertTitle>Signature Invalid!</AlertTitle>
                                         <AlertDescription>
-                                            The QR code data may be fraudulent. Do not accept this payment.
+                                            The QR code data may be fraudulent. Do not trust this data.
                                         </AlertDescription>
                                     </Alert>
                                 )}
                                 <div className='p-4 border rounded-md space-y-2 text-sm'>
-                                    <h3 className='font-semibold mb-2 text-base'>User Details</h3>
+                                    <h3 className='font-semibold mb-2 text-base'>Scanned Details</h3>
                                     <p><strong>Name:</strong> {validatedData.name}</p>
-                                    <p><strong>Employee ID:</strong> {validatedData.employeeId}</p>
-                                    <p><strong>Final Balance:</strong> {validatedData.balance} Tokens</p>
-                                    <p><strong>Last Updated:</strong> {format(new Date(validatedData.lastUpdated), 'PPp')}</p>
+                                    <p><strong>Employee ID:</strong> {validatedData.employee_id}</p>
+                                    {validatedData.transaction && (
+                                        <>
+                                            <p><strong>Payment:</strong> {validatedData.transaction.amount} tokens for {validatedData.transaction.description}</p>
+                                            <p><strong>New Balance:</strong> {validatedData.balance} Tokens</p>
+                                        </>
+                                    )}
+                                    <p><strong>Scanned At:</strong> {format(new Date(validatedData.timestamp), 'PPp')}</p>
                                     <p className='font-mono text-xs text-muted-foreground pt-2'>
-                                        <strong>User ID:</strong> {validatedData.id}<br/>
-                                        <strong>Signature:</strong> {validatedData.signature}
+                                        <strong>Signature:</strong> {validatedData.device_signature}
                                     </p>
                                 </div>
                             </>
@@ -124,7 +146,7 @@ export default function QrValidator() {
                     </div>
                 ) : (
                     <Textarea 
-                        placeholder='Paste QR data here... e.g., {"id": "...", "employeeId": "E12345", ...}'
+                        placeholder='Paste QR data here... e.g., {"employee_id": "E12345", ...}'
                         value={qrInput}
                         onChange={e => setQrInput(e.target.value)}
                         rows={8}
@@ -135,7 +157,7 @@ export default function QrValidator() {
                 {validatedData || error ? (
                     <Button onClick={handleReset} variant="outline">Scan Another</Button>
                 ) : (
-                    <Button onClick={handleValidate}>Validate Payment Data</Button>
+                    <Button onClick={handleValidate}>Validate QR Data</Button>
                 )}
             </CardFooter>
         </Card>

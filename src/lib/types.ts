@@ -10,6 +10,7 @@ export interface User {
   id: string;
   employeeId: string;
   name: string;
+  password?: string; // Added for login
   balance: number;
   transactions: Transaction[];
   role: 'user' | 'admin';

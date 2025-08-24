@@ -25,6 +25,7 @@ interface AddUserDialogProps {
 export default function AddUserDialog({ open, onOpenChange, role = 'user' }: AddUserDialogProps) {
   const [name, setName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
+  const [password, setPassword] = useState('');
   const { addUser } = useCanteenPass();
   const { toast } = useToast();
 
@@ -45,13 +46,23 @@ export default function AddUserDialog({ open, onOpenChange, role = 'user' }: Add
         });
         return;
     }
-    addUser(name, employeeId, role);
+    if (!password.trim()) {
+        toast({
+            title: 'Password required',
+            description: 'Please enter a password for the new user.',
+            variant: 'destructive',
+        });
+        return;
+    }
+
+    addUser(name, employeeId, role, password);
     setName('');
     setEmployeeId('');
+    setPassword('');
     onOpenChange(false);
   };
   
-  const title = role === 'admin' ? 'Add New Admin' : 'Add New User';
+  const title = role === 'admin' ? 'Add New Admin' : 'Create Account';
   const description = role === 'admin' 
     ? "Create a new admin account. Admins can manage users and vendors."
     : "Create a new user account. They will start with a balance of 0 tokens.";
@@ -88,6 +99,19 @@ export default function AddUserDialog({ open, onOpenChange, role = 'user' }: Add
               onChange={(e) => setEmployeeId(e.target.value)}
               className="col-span-3"
               placeholder={role === 'admin' ? "e.g., A00001" : "e.g., E12345"}
+            />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="password" className="text-right">
+              Password
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="col-span-3"
+              placeholder="Create a password"
             />
           </div>
         </div>
