@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart, Cog, HardDrive, Home, LogOut, Newspaper, QrCode, Ticket, Users, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 const menuItems = [
     {
@@ -63,7 +64,7 @@ const menuItems = [
 ]
 
 
-export default function AdminSidebar() {
+export default function AdminSidebar({ className }: { className?: string }) {
     const pathname = usePathname();
     const { logout } = useCanteenPass();
     const router = useRouter();
@@ -74,7 +75,7 @@ export default function AdminSidebar() {
     }
     
     return (
-       <aside className="h-screen sticky top-0 border-r bg-card hidden md:block w-64">
+       <aside className={cn("h-screen sticky top-0 border-r bg-card hidden md:flex flex-col w-64", className)}>
            <div className="flex h-full max-h-screen flex-col gap-2">
                 <div className="flex h-16 items-center border-b px-6">
                     <Link href="/admin" className="flex items-center gap-2 font-semibold">
