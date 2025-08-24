@@ -38,8 +38,9 @@ export default function QrValidator() {
 
 
     const validateSignature = (data: QrCodeData) => {
-        const dataString = `${data.employee_id}|${data.timestamp}`;
+        const dataString = `${data.employee_id}|${data.timestamp}|CanteenPass-Secret-Key`; // Added a static "secret"
         let hash = 0;
+        if (dataString.length === 0) return data.device_signature === `sig-0`;
         for (let i = 0; i < dataString.length; i++) {
             const char = dataString.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;

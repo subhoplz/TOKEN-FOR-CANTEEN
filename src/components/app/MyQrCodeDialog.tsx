@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCanteenPass } from '@/hooks/use-canteen-pass';
@@ -25,8 +26,9 @@ export default function MyQrCodeDialog({ open, onOpenChange }: MyQrCodeDialogPro
 
   // This is a simplified "hash" for demonstration. In a real app, use a proper crypto library.
   const createSignature = (data: { employee_id: string, timestamp: string }) => {
-    const dataString = `${data.employee_id}|${data.timestamp}`;
+    const dataString = `${data.employee_id}|${data.timestamp}|CanteenPass-Secret-Key`; // Added a static "secret"
     let hash = 0;
+    if (dataString.length === 0) return `sig-0`;
     for (let i = 0; i < dataString.length; i++) {
         const char = dataString.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
