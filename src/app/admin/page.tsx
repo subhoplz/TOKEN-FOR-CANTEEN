@@ -2,7 +2,7 @@
 "use client";
 
 import { useCanteenPass } from "@/hooks/use-canteen-pass";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Wallet, Utensils, BarChart } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
