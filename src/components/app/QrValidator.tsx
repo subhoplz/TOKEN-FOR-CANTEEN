@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -5,16 +6,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle, QrCode, ShieldAlert, XCircle } from 'lucide-react';
+import { CheckCircle, QrCode, ShieldAlert, XCircle, ArrowLeft, Utensils, Ticket } from 'lucide-react';
 import { format } from 'date-fns';
 import { useCanteenPass } from '@/hooks/use-canteen-pass';
+import { User } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
 
-// This mirrors the structure from the QR generation
 interface QrCodeData {
     employee_id: string;
     timestamp: string;
     device_signature: string;
-    // Optional fields for display
+    // Optional fields for display - not used in signature
     name?: string;
     balance?: number;
     transaction?: {
@@ -26,20 +29,21 @@ interface QrCodeData {
 export default function QrValidator() {
     const [qrInput, setQrInput] = useState('');
     const [validatedData, setValidatedData] = useState<QrCodeData | null>(null);
+    const [scannedUser, setScannedUser] = useState<User | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [signatureValid, setSignatureValid] = useState(false);
-    const { users } = useCanteenPass();
+    const { users, addTokensToUser, spendTokensFromUser } = useCanteenPass();
+    const { toast } = useToast();
+    const router = useRouter();
 
 
-    // This must be the same simple "hash" function as in the hook.
-    // In a real app, this would be a proper cryptographic verification.
     const validateSignature = (data: QrCodeData) => {
         const dataString = `${data.employee_id}|${data.timestamp}`;
         let hash = 0;
         for (let i = 0; i < dataString.length; i++) {
             const char = dataString.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32bit integer
+            hash = hash & hash;
         }
         const expectedSignature = `sig-${hash}`;
         return data.device_signature === expectedSignature;
@@ -65,12 +69,14 @@ export default function QrValidator() {
             }
 
             const userInDb = users.find(u => u.employeeId === parsed.employee_id);
+            if (!userInDb) {
+                 setError("User not found in the local database. The vendor app may need to sync.");
+                 setSignatureValid(false); // Can't proceed if user is unknown
+                 return;
+            }
+            setScannedUser(userInDb);
             
-            // For display purposes, merge known data with QR data
-            const displayData = {
-                ...parsed,
-                name: parsed.name || userInDb?.name || 'Unknown User',
-            };
+            const displayData = { ...parsed, name: parsed.name || userInDb.name };
             setValidatedData(displayData);
             
             const isValid = validateSignature(parsed);
@@ -83,22 +89,61 @@ export default function QrValidator() {
             setError("Invalid QR data format. Please paste the correct JSON data.");
         }
     };
+
+    const handleDeduct = () => {
+        if (!scannedUser || !validatedData) return;
+
+        // For a meal, we'll deduct 1 token by default. This can be made dynamic later.
+        const mealCost = 1;
+        const mealDescription = "Meal served";
+
+        const result = spendTokensFromUser(scannedUser.id, mealCost, mealDescription);
+        
+        if (result.success) {
+            toast({
+                title: "Success",
+                description: `${mealCost} token deducted from ${scannedUser.name}.`,
+            });
+            handleReset(); // Reset for the next scan
+        } else {
+             toast({
+                title: "Failed",
+                description: result.data,
+                variant: 'destructive'
+            });
+        }
+
+    }
     
     const handleReset = () => {
         setQrInput('');
         setValidatedData(null);
+        setScannedUser(null);
         setError(null);
         setSignatureValid(false);
     }
 
     return (
         <Card className="w-full shadow-lg">
-            <CardHeader>
-                <CardTitle className='flex items-center gap-2'><QrCode/> Offline Transaction Validator</CardTitle>
-                <CardDescription>Paste the QR code data from the user's app to validate the payment details offline.</CardDescription>
+             <Button variant="ghost" size="sm" className="absolute top-4 left-4" onClick={() => router.back()}>
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+            </Button>
+            <CardHeader className='text-center pt-12'>
+                <CardTitle className='flex items-center gap-2 justify-center text-3xl'><QrCode/> Scan & Validate</CardTitle>
+                <CardDescription>Paste the QR code from the user's app to validate and complete the transaction.</CardDescription>
             </CardHeader>
             <CardContent>
-                {validatedData || error ? (
+                {!validatedData && !error && (
+                     <Textarea 
+                        placeholder='Paste QR data here... e.g., {"employee_id": "E12345", ...}'
+                        value={qrInput}
+                        onChange={e => setQrInput(e.target.value)}
+                        rows={8}
+                        className="text-base"
+                    />
+                )}
+                
+                {(validatedData || error) && (
                     <div className='space-y-4'>
                         {error && !signatureValid && (
                              <Alert variant="destructive">
@@ -107,15 +152,12 @@ export default function QrValidator() {
                                 <AlertDescription>{error}</AlertDescription>
                             </Alert>
                         )}
-                        {validatedData && (
+                        {validatedData && scannedUser && (
                             <>
                                 {signatureValid ? (
                                     <Alert className='bg-accent/10 border-accent text-accent-foreground'>
                                         <CheckCircle className="h-4 w-4 text-accent" />
-                                        <AlertTitle className='text-accent-foreground/90'>Signature Valid & Data Verified</AlertTitle>
-                                        <AlertDescription className='text-accent-foreground/80'>
-                                            The digital signature is authentic.
-                                        </AlertDescription>
+                                        <AlertTitle className='text-accent-foreground/90'>Signature Valid & User Verified</AlertTitle>
                                     </Alert>
                                 ) : (
                                     <Alert variant="destructive">
@@ -126,38 +168,44 @@ export default function QrValidator() {
                                         </AlertDescription>
                                     </Alert>
                                 )}
-                                <div className='p-4 border rounded-md space-y-2 text-sm'>
-                                    <h3 className='font-semibold mb-2 text-base'>Scanned Details</h3>
-                                    <p><strong>Name:</strong> {validatedData.name}</p>
-                                    <p><strong>Employee ID:</strong> {validatedData.employee_id}</p>
-                                    {validatedData.transaction && (
-                                        <>
-                                            <p><strong>Payment:</strong> {validatedData.transaction.amount} tokens for {validatedData.transaction.description}</p>
-                                            <p><strong>New Balance:</strong> {validatedData.balance} Tokens</p>
-                                        </>
-                                    )}
-                                    <p><strong>Scanned At:</strong> {format(new Date(validatedData.timestamp), 'PPp')}</p>
-                                    <p className='font-mono text-xs text-muted-foreground pt-2'>
-                                        <strong>Signature:</strong> {validatedData.device_signature}
-                                    </p>
-                                </div>
+                                <Card className='bg-secondary/50'>
+                                    <CardHeader>
+                                        <CardTitle>{scannedUser.name}</CardTitle>
+                                        <CardDescription>{scannedUser.employeeId}</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className='flex justify-between items-center'>
+                                        <div className='flex items-center gap-2'>
+                                            <Ticket className='h-6 w-6 text-primary'/>
+                                            <span className='text-xl font-bold'>{scannedUser.balance}</span>
+                                            <span className='text-muted-foreground'>Tokens</span>
+                                        </div>
+                                        <div>
+                                            <p className='text-sm font-semibold'>Meal Available:</p>
+                                            <p className='text-muted-foreground'>Breakfast / Lunch / Dinner</p>
+                                        </div>
+                                    </CardContent>
+                                </Card>
                             </>
                         )}
                     </div>
-                ) : (
-                    <Textarea 
-                        placeholder='Paste QR data here... e.g., {"employee_id": "E12345", ...}'
-                        value={qrInput}
-                        onChange={e => setQrInput(e.target.value)}
-                        rows={8}
-                    />
                 )}
             </CardContent>
-            <CardFooter className='flex justify-end gap-2'>
-                {validatedData || error ? (
-                    <Button onClick={handleReset} variant="outline">Scan Another</Button>
-                ) : (
-                    <Button onClick={handleValidate}>Validate QR Data</Button>
+            <CardFooter className='flex flex-col gap-2'>
+                {validatedData && signatureValid && (
+                    <>
+                        <Button className="w-full h-12 text-lg" onClick={handleDeduct} disabled={scannedUser!.balance < 1}>
+                           {scannedUser!.balance < 1 ? 'Insufficient Balance' : <><Utensils className='mr-2' /> Deduct 1 Token & Serve</>}
+                        </Button>
+                        <Button onClick={handleReset} variant="outline" className="w-full">Cancel & Scan Next</Button>
+                    </>
+                )}
+
+                {error && (
+                     <Button onClick={handleReset} variant="outline" className='w-full'>Scan Another</Button>
+                )}
+
+                {!(validatedData || error) && (
+                    <Button onClick={handleValidate} className='w-full h-12 text-lg'>Validate QR Data</Button>
                 )}
             </CardFooter>
         </Card>

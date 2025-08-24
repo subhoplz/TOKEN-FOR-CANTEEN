@@ -1,8 +1,9 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { UtensilsCrossed, Shield, User as UserIcon } from "lucide-react";
+import { UtensilsCrossed, Shield, User as UserIcon, Store } from "lucide-react";
 import Link from "next/link";
 
 export default function LoginPage() {
@@ -16,7 +17,7 @@ export default function LoginPage() {
             </div>
             <p className="text-muted-foreground text-lg">Welcome! Please select your login type.</p>
         </div>
-        <div className="grid md:grid-cols-2 gap-8">
+        <div className="grid md:grid-cols-3 gap-8">
             <Card className="shadow-lg hover:shadow-xl transition-shadow">
                 <CardHeader className="text-center">
                     <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit mb-4 border border-primary/20">
@@ -34,10 +35,24 @@ export default function LoginPage() {
             <Card className="shadow-lg hover:shadow-xl transition-shadow">
                 <CardHeader className="text-center">
                     <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit mb-4 border border-primary/20">
+                        <Store className="h-12 w-12 text-primary" />
+                    </div>
+                    <CardTitle>Vendor Login</CardTitle>
+                    <CardDescription>Scan QR codes and process meal transactions.</CardDescription>
+                </CardHeader>
+                <CardContent className="text-center">
+                    <Button size="lg" asChild>
+                        <Link href="/login/vendor">Proceed to Vendor Login</Link>
+                    </Button>
+                </CardContent>
+            </Card>
+            <Card className="shadow-lg hover:shadow-xl transition-shadow">
+                <CardHeader className="text-center">
+                    <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit mb-4 border border-primary/20">
                         <Shield className="h-12 w-12 text-primary" />
                     </div>
-                    <CardTitle>Admin & Vendor Login</CardTitle>
-                    <CardDescription>Manage users or validate vendor transactions.</CardDescription>
+                    <CardTitle>Admin Login</CardTitle>
+                    <CardDescription>Manage users, tokens, and system settings.</CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
                     <Button size="lg" asChild>

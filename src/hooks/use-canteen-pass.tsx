@@ -1,3 +1,4 @@
+
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
@@ -14,6 +15,7 @@ interface CanteenPassContextType {
   addTokens: (amount: number) => void;
   addTokensToUser: (userId: string, amount: number) => void;
   spendTokens: (amount: number, description: string) => { success: boolean; data: string | null };
+  spendTokensFromUser: (userId: string, amount: number, description: string) => { success: boolean; data: string | null };
   getSpendingHabits: () => string;
   switchUser: (userId: string, password?: string) => void;
   logout: () => void;
@@ -37,14 +39,13 @@ export function useCanteenPassState() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
 
-  // This is a simplified "hash" for demonstration. In a real app, use a proper crypto library.
   const createSignature = (data: { employee_id: string, timestamp: string }) => {
     const dataString = `${data.employee_id}|${data.timestamp}`;
     let hash = 0;
     for (let i = 0; i < dataString.length; i++) {
         const char = dataString.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32bit integer
+        hash = hash & hash;
     }
     return `sig-${hash}`;
   };
@@ -76,7 +77,7 @@ export function useCanteenPassState() {
     } catch (error) {
       console.error("Failed to load from local storage", error);
       toast({ title: "Error", description: "Could not load your data.", variant: "destructive" });
-      setUsers(initialUsers); // Fallback to initial users on error
+      setUsers(initialUsers);
       setCurrentUser(null);
     } finally {
       setLoading(false);
@@ -109,7 +110,7 @@ export function useCanteenPassState() {
       employeeId,
       name,
       password: password,
-      balance: role === 'admin' ? 0 : 0, // Admins always have 0 balance
+      balance: role === 'admin' ? 0 : 0,
       transactions: [],
       role: role,
       lastUpdated: Date.now()
@@ -250,7 +251,6 @@ export function useCanteenPassState() {
     const qrData = {
         ...qrPayload,
         device_signature: signature,
-        // For validation convenience, we can add non-signed data
         name: updatedUser.name,
         balance: updatedUser.balance,
         transaction: {
@@ -260,7 +260,43 @@ export function useCanteenPassState() {
     };
 
     return { success: true, data: JSON.stringify(qrData, null, 2) };
-  }, [currentUser, createSignature]);
+  }, [currentUser]);
+
+  const spendTokensFromUser = useCallback((userId: string, amount: number, description: string) => {
+    let success = false;
+    let data: string | null = "User not found.";
+    
+    setUsers(prevUsers => {
+      const newUsers = prevUsers.map(user => {
+        if (user.id === userId) {
+          if (user.balance < amount) {
+            data = "Insufficient balance.";
+            return user;
+          }
+          const newTransaction: Transaction = {
+            id: crypto.randomUUID(),
+            type: 'debit',
+            amount,
+            description,
+            timestamp: Date.now(),
+          };
+          const updatedUser = {
+            ...user,
+            balance: user.balance - amount,
+            transactions: [newTransaction, ...user.transactions],
+            lastUpdated: Date.now(),
+          };
+          success = true;
+          data = "Transaction successful";
+          return updatedUser;
+        }
+        return user;
+      });
+      return newUsers;
+    });
+
+    return { success, data };
+  }, []);
 
   const getSpendingHabits = useCallback(() => {
     const transactions = currentUser?.transactions || [];
@@ -326,6 +362,7 @@ export function useCanteenPassState() {
     addTokens, 
     addTokensToUser,
     spendTokens, 
+    spendTokensFromUser,
     getSpendingHabits,
     switchUser,
     logout,
