@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -53,15 +54,17 @@ export default function QrValidator() {
         const expectedSignature = `sig-${hash}`;
         return data.device_signature === expectedSignature;
     };
-
+    
     const stopCamera = useCallback(() => {
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
         }
-        if (videoRef.current) {
-            videoRef.current.srcObject = null;
+        if (videoRef.current?.srcObject) {
+          const stream = videoRef.current.srcObject as MediaStream;
+          stream.getTracks().forEach(track => track.stop());
+          videoRef.current.srcObject = null;
         }
+        streamRef.current = null; // Clear the ref
         setIsScanning(false);
     }, []);
     
@@ -110,7 +113,7 @@ export default function QrValidator() {
 
 
     const startCamera = useCallback(async () => {
-        if (streamRef.current) return;
+        if (streamRef.current || !isScanning) return;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
             streamRef.current = stream;
@@ -118,7 +121,6 @@ export default function QrValidator() {
                 videoRef.current.srcObject = stream;
             }
             setHasCameraPermission(true);
-            setIsScanning(true);
         } catch (error) {
             console.error('Error accessing camera:', error);
             setHasCameraPermission(false);
@@ -128,7 +130,7 @@ export default function QrValidator() {
                 description: 'Please enable camera permissions in your browser settings to use this app.',
             });
         }
-    }, [toast]);
+    }, [toast, isScanning]);
       
       useEffect(() => {
         startCamera();
@@ -138,11 +140,12 @@ export default function QrValidator() {
       }, [startCamera, stopCamera]);
       
       const tick = useCallback(() => {
-        if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA && isScanning) {
+        if (!isScanning) return;
+        if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
             const video = videoRef.current;
             const canvas = canvasRef.current;
             if (canvas) {
-                const context = canvas.getContext('2d');
+                const context = canvas.getContext('2d', { willReadFrequently: true });
                 if (context) {
                     canvas.height = video.videoHeight;
                     canvas.width = video.videoWidth;
@@ -158,9 +161,7 @@ export default function QrValidator() {
                 }
             }
         }
-        if (isScanning) {
-            requestAnimationFrame(tick);
-        }
+        requestAnimationFrame(tick);
     }, [isScanning, handleValidate]);
       
       useEffect(() => {
@@ -206,7 +207,8 @@ export default function QrValidator() {
         setScannedUser(null);
         setError(null);
         setSignatureValid(false);
-        startCamera();
+        setIsScanning(true); // Re-enable scanning
+        startCamera(); // Restart camera
     }
 
     return (
@@ -282,10 +284,10 @@ export default function QrValidator() {
                 </div>
             </CardContent>
             <CardFooter className='flex flex-col gap-2 pt-4'>
-                {validatedData && signatureValid && (
+                {scannedUser && validatedData && signatureValid && (
                     <>
-                        <Button className="w-full h-12 text-lg" onClick={handleDeduct} disabled={scannedUser!.balance < 1}>
-                           {scannedUser!.balance < 1 ? 'Insufficient Balance' : <><Utensils className='mr-2' /> Deduct 1 Token & Serve</>}
+                        <Button className="w-full h-12 text-lg" onClick={handleDeduct} disabled={scannedUser.balance < 1}>
+                           {scannedUser.balance < 1 ? 'Insufficient Balance' : <><Utensils className='mr-2' /> Deduct 1 Token & Serve</>}
                         </Button>
                         <Button onClick={handleReset} variant="outline" className="w-full">Cancel & Scan Next</Button>
                     </>
