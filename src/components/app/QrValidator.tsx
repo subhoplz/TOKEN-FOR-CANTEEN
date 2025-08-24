@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -12,6 +11,7 @@ import { User } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import jsQR from "jsqr";
+import { cn } from '@/lib/utils';
 
 interface QrCodeData {
     employee_id: string;
@@ -310,5 +310,7 @@ export default function QrValidator() {
     );
 }
 
+
+    
 
     
