@@ -8,14 +8,14 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { useCanteenPass } from "@/hooks/use-canteen-pass";
 import { Download, Upload, Users } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 export default function TokenManagementPage() {
     const { users, addTokensToUser } = useCanteenPass();
     const [amount, setAmount] = useState('30');
     const [isLoading, setIsLoading] = useState(false);
 
-    const handleBulkRefill = () => {
+    const handleBulkRefill = useCallback(() => {
         setIsLoading(true);
         const refillAmount = parseInt(amount, 10);
         if (isNaN(refillAmount) || refillAmount <= 0) {
@@ -42,7 +42,7 @@ export default function TokenManagementPage() {
             });
             setIsLoading(false);
         }, 1000); // Simulate network delay
-    }
+    }, [addTokensToUser, users, amount]);
 
     return (
         <div className="space-y-8">
