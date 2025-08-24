@@ -10,7 +10,7 @@ interface CanteenPassContextType {
   currentUser: User | null;
   balance: number;
   transactions: Transaction[];
-  addUser: (name: string, role?: 'user' | 'admin') => void;
+  addUser: (name: string, employeeId: string, role?: 'user' | 'admin') => void;
   addTokens: (amount: number) => void;
   addTokensToUser: (userId: string, amount: number) => void;
   spendTokens: (amount: number, description: string) => { success: boolean; data: string | null };
@@ -18,17 +18,17 @@ interface CanteenPassContextType {
   switchUser: (userId: string) => void;
   logout: () => void;
   deleteUser: (userId: string) => void;
-  editUser: (userId: string, name: string) => void;
+  editUser: (userId: string, name: string, employeeId: string) => void;
 }
 
 export const CanteenPassContext = createContext<CanteenPassContextType | undefined>(undefined);
 
 const initialUsers: User[] = [
-    { id: 'user-alex-doe', name: 'Alex Doe', balance: 100, transactions: [], role: 'user' },
-    { id: 'user-jane-doe', name: 'Jane Doe', balance: 250, transactions: [], role: 'user' },
-    { id: 'admin-main', name: 'Main Admin', balance: 0, transactions: [], role: 'admin' },
-    { id: 'admin-canteen', name: 'Canteen Admin', balance: 0, transactions: [], role: 'admin' },
-    { id: 'admin-new', name: 'New Admin', balance: 0, transactions: [], role: 'admin' },
+    { id: 'user-alex-doe', employeeId: 'E12345', name: 'Alex Doe', balance: 100, transactions: [], role: 'user', lastUpdated: Date.now() },
+    { id: 'user-jane-doe', employeeId: 'E67890', name: 'Jane Doe', balance: 250, transactions: [], role: 'user', lastUpdated: Date.now() },
+    { id: 'admin-main', employeeId: 'A00001', name: 'Main Admin', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
+    { id: 'admin-canteen', employeeId: 'A00002', name: 'Canteen Admin', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
+    { id: 'admin-new', employeeId: 'A00003', name: 'New Admin', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
 ];
 
 
@@ -37,6 +37,19 @@ export function useCanteenPassState() {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
+
+  // Very simple "hash" function for the digital signature. 
+  // In a real app, a proper cryptographic library should be used.
+  const createSignature = (data: Omit<User, 'transactions'>) => {
+    const dataString = `${data.id}|${data.employeeId}|${data.name}|${data.balance}|${data.lastUpdated}`;
+    let hash = 0;
+    for (let i = 0; i < dataString.length; i++) {
+        const char = dataString.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return `sig-${hash}`;
+  };
 
   useEffect(() => {
     try {
@@ -88,13 +101,15 @@ export function useCanteenPassState() {
     setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
   };
   
-  const addUser = useCallback((name: string, role: 'user' | 'admin' = 'user') => {
+  const addUser = useCallback((name: string, employeeId: string, role: 'user' | 'admin' = 'user') => {
     const newUser: User = {
       id: `${role}-${name.toLowerCase().replace(/\s/g, '-')}-${Math.random().toString(36).substr(2, 5)}`,
+      employeeId,
       name,
       balance: role === 'admin' ? 0 : 0, // Admins always have 0 balance
       transactions: [],
-      role: role
+      role: role,
+      lastUpdated: Date.now()
     };
     setUsers(prev => [...prev, newUser]);
     toast({
@@ -138,6 +153,7 @@ export function useCanteenPassState() {
       ...currentUser,
       balance: currentUser.balance + amount,
       transactions: [newTransaction, ...currentUser.transactions],
+      lastUpdated: Date.now(),
     };
 
     setCurrentUser(updatedUser);
@@ -163,6 +179,7 @@ export function useCanteenPassState() {
           ...user,
           balance: user.balance + amount,
           transactions: [newTransaction, ...user.transactions],
+          lastUpdated: Date.now(),
         };
         
         // If the funded user is the current user, update the context
@@ -195,25 +212,26 @@ export function useCanteenPassState() {
       timestamp: Date.now(),
     };
     
-    const updatedUser = {
+    const updatedUser: User = {
       ...currentUser,
       balance: currentUser.balance - amount,
       transactions: [newTransaction, ...currentUser.transactions],
+      lastUpdated: Date.now(),
     };
 
     setCurrentUser(updatedUser);
     updateUserInList(updatedUser);
     
+    const { transactions, ...userForQr } = updatedUser;
+    const signature = createSignature(userForQr);
+    
     const qrData = {
-        transactionId: newTransaction.id,
-        userId: currentUser.id,
-        amount,
-        description,
-        timestamp: newTransaction.timestamp,
+        ...userForQr,
+        signature,
     };
 
     return { success: true, data: JSON.stringify(qrData, null, 2) };
-  }, [currentUser]);
+  }, [currentUser, createSignature]);
 
   const getSpendingHabits = useCallback(() => {
     const transactions = currentUser?.transactions || [];
@@ -246,10 +264,10 @@ export function useCanteenPassState() {
     }));
   }, [currentUser?.id, toast]);
   
-  const editUser = useCallback((userId: string, name: string) => {
+  const editUser = useCallback((userId: string, name: string, employeeId: string) => {
      setUsers(prev => prev.map(user => {
         if (user.id === userId) {
-            const updatedUser = { ...user, name };
+            const updatedUser = { ...user, name, employeeId, lastUpdated: Date.now() };
             if (currentUser?.id === userId) {
                 setCurrentUser(updatedUser);
             }

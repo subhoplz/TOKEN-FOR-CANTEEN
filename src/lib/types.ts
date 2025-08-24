@@ -8,8 +8,10 @@ export interface Transaction {
 
 export interface User {
   id: string;
+  employeeId: string;
   name: string;
   balance: number;
   transactions: Transaction[];
   role: 'user' | 'admin';
+  lastUpdated: number;
 }

@@ -22,6 +22,7 @@ export default function UserManagement() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
   const [editedName, setEditedName] = useState('');
+  const [editedEmployeeId, setEditedEmployeeId] = useState('');
   const [userToFund, setUserToFund] = useState<User | null>(null);
   const [fundAmount, setFundAmount] = useState('');
 
@@ -33,12 +34,13 @@ export default function UserManagement() {
   };
 
   const handleEditSave = () => {
-    if (userToEdit && editedName.trim()) {
-      editUser(userToEdit.id, editedName.trim());
+    if (userToEdit && editedName.trim() && editedEmployeeId.trim()) {
+      editUser(userToEdit.id, editedName.trim(), editedEmployeeId.trim());
       setUserToEdit(null);
       setEditedName('');
+      setEditedEmployeeId('');
     } else {
-        toast({ title: "Edit failed", description: "Name cannot be empty.", variant: "destructive"})
+        toast({ title: "Edit failed", description: "Name and Employee ID cannot be empty.", variant: "destructive"})
     }
   }
 
@@ -69,7 +71,7 @@ export default function UserManagement() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User ID</TableHead>
+                <TableHead>Employee ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
@@ -79,7 +81,7 @@ export default function UserManagement() {
             <TableBody>
               {users.map((user: User) => (
                 <TableRow key={user.id} className={currentUser?.id === user.id ? 'bg-secondary' : ''}>
-                  <TableCell className="font-mono text-xs">{user.id}</TableCell>
+                  <TableCell className="font-mono text-xs">{user.employeeId}</TableCell>
                   <TableCell className="font-medium">{user.name}</TableCell>
                   <TableCell>
                     <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
@@ -108,7 +110,7 @@ export default function UserManagement() {
                                 <Plus className='mr-2 h-4 w-4' />
                                 Add Tokens
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => { setUserToEdit(user); setEditedName(user.name); }}>
+                            <DropdownMenuItem onClick={() => { setUserToEdit(user); setEditedName(user.name); setEditedEmployeeId(user.employeeId); }}>
                                 <Edit className='mr-2 h-4 w-4' />
                                 Edit
                             </DropdownMenuItem>
@@ -152,12 +154,16 @@ export default function UserManagement() {
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Edit User</DialogTitle>
-                <DialogDescription>Change the name for {userToEdit?.name}.</DialogDescription>
+                <DialogDescription>Change the details for {userToEdit?.name}.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="edit-name" className="text-right">Name</Label>
                     <Input id="edit-name" value={editedName} onChange={(e) => setEditedName(e.target.value)} className='col-span-3' />
+                </div>
+                 <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-employeeId" className="text-right">Employee ID</Label>
+                    <Input id="edit-employeeId" value={editedEmployeeId} onChange={(e) => setEditedEmployeeId(e.target.value)} className='col-span-3' />
                 </div>
             </div>
             <DialogFooter>

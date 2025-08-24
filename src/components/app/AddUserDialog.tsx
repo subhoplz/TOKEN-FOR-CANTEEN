@@ -24,6 +24,7 @@ interface AddUserDialogProps {
 
 export default function AddUserDialog({ open, onOpenChange, role = 'user' }: AddUserDialogProps) {
   const [name, setName] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const { addUser } = useCanteenPass();
   const { toast } = useToast();
 
@@ -36,8 +37,17 @@ export default function AddUserDialog({ open, onOpenChange, role = 'user' }: Add
       });
       return;
     }
-    addUser(name, role);
+    if (!employeeId.trim()) {
+        toast({
+            title: 'Invalid Employee ID',
+            description: 'Please enter an employee ID.',
+            variant: 'destructive',
+        });
+        return;
+    }
+    addUser(name, employeeId, role);
     setName('');
+    setEmployeeId('');
     onOpenChange(false);
   };
   
@@ -66,6 +76,18 @@ export default function AddUserDialog({ open, onOpenChange, role = 'user' }: Add
               onChange={(e) => setName(e.target.value)}
               className="col-span-3"
               placeholder={role === 'admin' ? "e.g., Head Operator" : "e.g., Jane Doe"}
+            />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="employeeId" className="text-right">
+              Employee ID
+            </Label>
+            <Input
+              id="employeeId"
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+              className="col-span-3"
+              placeholder={role === 'admin' ? "e.g., A00001" : "e.g., E12345"}
             />
           </div>
         </div>

@@ -49,6 +49,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
         return;
     }
 
+    // Note: spendTokens now deducts the balance locally and generates the QR data.
     const result = spendTokens(numericAmount, description);
     if (result.success && result.data) {
         setQrData(result.data);
@@ -68,9 +69,9 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Pay Vendor</DialogTitle>
+          <DialogTitle>Generate Payment QR Code</DialogTitle>
           <DialogDescription>
-            {qrData ? 'Show this QR code to the vendor to complete your payment.' : 'Enter payment details to generate a QR code.'}
+            {qrData ? 'Show this QR code to the vendor to complete your payment.' : 'Enter payment details to generate a QR code for offline validation.'}
           </DialogDescription>
         </DialogHeader>
         {qrData ? (
@@ -85,9 +86,9 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
                 />
                 <Alert variant="default" className='bg-accent/10 border-accent/50'>
                     <CheckCircle className="h-4 w-4 text-accent" />
-                    <AlertTitle>Success</AlertTitle>
+                    <AlertTitle>Tokens Deducted & QR Generated</AlertTitle>
                     <AlertDescription>
-                        {amount} tokens have been deducted from your balance.
+                        {amount} tokens have been deducted from your balance. The QR code contains the new balance.
                     </AlertDescription>
                 </Alert>
             </div>
@@ -97,7 +98,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
                     <Label htmlFor="amount" className="text-right">Amount</Label>
                     <Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="col-span-3" placeholder="e.g., 25" />
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
+                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="description" className="text-right">For</Label>
                     <Input id="description" value={description} onChange={(e) => setDescription(e.target.value)} className="col-span-3" placeholder="e.g., Lunch" />
                 </div>
