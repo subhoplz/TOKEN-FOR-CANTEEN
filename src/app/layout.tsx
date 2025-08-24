@@ -6,8 +6,9 @@ import type { Metadata } from 'next';
 import ClientLayout from './client-layout';
 
 export const metadata: Metadata = {
-  title: 'SmartCanteen',
+  title: 'CanteenPass',
   description: 'Manage your canteen tokens with ease.',
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({
