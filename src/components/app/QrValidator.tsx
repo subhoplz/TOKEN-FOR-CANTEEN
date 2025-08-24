@@ -96,6 +96,7 @@ export default function QrValidator() {
             if (!userInDb) {
                  setError("User not found. The vendor app may need to sync.");
                  setSignatureValid(false);
+                 setScannedUser(null);
                  return;
             }
             setScannedUser(userInDb);
@@ -181,24 +182,35 @@ export default function QrValidator() {
     const handleDeduct = () => {
         if (!scannedUser || !validatedData) return;
 
-        const mealCost = 1;
-        const mealDescription = "Meal served";
-
-        if (scannedUser.balance < mealCost) {
+        // Re-fetch the user from the main context to ensure we have the latest balance
+        const freshUser = users.find(u => u.id === scannedUser.id);
+        if (!freshUser) {
             toast({
-                title: "Insufficient Balance",
-                description: `${scannedUser.name} does not have enough tokens.`,
+                title: "Error",
+                description: "Scanned user could not be found.",
                 variant: 'destructive'
             });
             return;
         }
 
-        const result = spendTokensFromUser(scannedUser.id, mealCost, mealDescription);
+        const mealCost = 1;
+        const mealDescription = "Meal served";
+
+        if (freshUser.balance < mealCost) {
+            toast({
+                title: "Insufficient Balance",
+                description: `${freshUser.name} does not have enough tokens.`,
+                variant: 'destructive'
+            });
+            return;
+        }
+
+        const result = spendTokensFromUser(freshUser.id, mealCost, mealDescription);
         
         if (result.success) {
             toast({
                 title: "Success",
-                description: `${mealCost} token deducted from ${scannedUser.name}.`,
+                description: `${mealCost} token deducted from ${freshUser.name}.`,
             });
             handleReset();
         } else {
@@ -310,7 +322,3 @@ export default function QrValidator() {
     );
 }
 
-
-    
-
-    
