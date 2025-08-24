@@ -21,8 +21,6 @@ export default function AdminLoginPage() {
             const user = users.find(u => u.id === selectedUser);
             if (user?.role === 'admin') {
                 router.push('/admin');
-            } else {
-                router.push('/');
             }
         }
     };
