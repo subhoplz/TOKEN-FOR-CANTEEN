@@ -10,7 +10,7 @@ interface CanteenPassContextType {
   currentUser: User | null;
   balance: number;
   transactions: Transaction[];
-  addUser: (name: string) => void;
+  addUser: (name: string, role?: 'user' | 'admin') => void;
   addTokens: (amount: number) => void;
   spendTokens: (amount: number, description: string) => { success: boolean; data: string | null };
   getSpendingHabits: () => string;
@@ -85,18 +85,18 @@ export function useCanteenPassState() {
     setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
   };
   
-  const addUser = useCallback((name: string) => {
+  const addUser = useCallback((name: string, role: 'user' | 'admin' = 'user') => {
     const newUser: User = {
-      id: `user-${name.toLowerCase().replace(/\s/g, '-')}-${Math.random().toString(36).substr(2, 5)}`,
+      id: `${role}-${name.toLowerCase().replace(/\s/g, '-')}-${Math.random().toString(36).substr(2, 5)}`,
       name,
-      balance: 0,
+      balance: role === 'admin' ? 0 : 0, // Admins always have 0 balance
       transactions: [],
-      role: 'user'
+      role: role
     };
     setUsers(prev => [...prev, newUser]);
     toast({
-      title: "User Added",
-      description: `${name} has been added to the system.`,
+      title: `${role.charAt(0).toUpperCase() + role.slice(1)} Added`,
+      description: `${name} has been added to the system as a ${role}.`,
     });
   }, [toast]);
 
