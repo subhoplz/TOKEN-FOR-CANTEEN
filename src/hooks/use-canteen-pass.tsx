@@ -30,7 +30,7 @@ const initialUsers: User[] = [
 
 export function useCanteenPassState() {
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
 
