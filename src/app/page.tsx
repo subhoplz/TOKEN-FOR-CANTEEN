@@ -3,25 +3,21 @@
 
 import { useCanteenPass } from '@/hooks/use-canteen-pass';
 import { Skeleton } from '@/components/ui/skeleton';
-import  Header  from '@/components/app/Header';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BalanceCard from '@/components/app/BalanceCard';
 import MenuCard from '@/components/app/MenuCard';
 import { Button } from '@/components/ui/button';
-import { QrCode, History, UserSquare, LogOut } from 'lucide-react';
-import PayVendorDialog from '@/components/app/PayVendorDialog';
-import TransactionHistoryDialog from '@/components/app/TransactionHistoryDialog';
+import { LogOut, UserSquare } from 'lucide-react';
 import MyQrCodeDialog from '@/components/app/MyQrCodeDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
+import UserLayout from '@/components/app/UserLayout';
 
 export default function DashboardPage() {
   const { loading, currentUser, logout } = useCanteenPass();
   const router = useRouter();
 
-  const [payVendorOpen, setPayVendorOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [myQrOpen, setMyQrOpen] = useState(false);
 
   useEffect(() => {
@@ -46,8 +42,8 @@ export default function DashboardPage() {
 
   if (loading || !currentUser) {
     return (
+      <UserLayout>
         <div className="flex flex-col min-h-screen bg-background">
-            <Header />
             <main className="flex-1 p-4 sm:p-6 lg:p-8">
                 <div className="max-w-md mx-auto space-y-6">
                     <Skeleton className="h-20 rounded-xl" />
@@ -60,14 +56,14 @@ export default function DashboardPage() {
                 </div>
             </main>
         </div>
+      </UserLayout>
     )
   }
 
   return (
     <>
-    <div className="flex flex-col min-h-screen bg-secondary/50">
-      <Header />
-      <main className="flex-1 p-4 sm:p-6 lg:p-8">
+    <UserLayout>
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24">
         <div className="max-w-md mx-auto grid gap-6">
             
             <Card className='flex items-center gap-4 p-4 shadow-sm'>
@@ -87,24 +83,13 @@ export default function DashboardPage() {
             <BalanceCard />
 
             <MenuCard />
-
-            <div className="grid grid-cols-2 gap-4">
-                 <Button className='py-8 text-lg h-auto' onClick={() => setPayVendorOpen(true)}>
-                    <QrCode className="mr-2 h-6 w-6" /> Scan to Pay
-                </Button>
-                <Button className='py-8 text-lg h-auto' variant="outline" onClick={() => setHistoryOpen(true)}>
-                    <History className="mr-2 h-6 w-6" /> View History
-                </Button>
-            </div>
             
             <Button variant="link" className='text-muted-foreground' onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" /> Logout
             </Button>
         </div>
       </main>
-    </div>
-    <PayVendorDialog open={payVendorOpen} onOpenChange={setPayVendorOpen} />
-    <TransactionHistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} />
+    </UserLayout>
     <MyQrCodeDialog open={myQrOpen} onOpenChange={setMyQrOpen} />
     </>
   );
