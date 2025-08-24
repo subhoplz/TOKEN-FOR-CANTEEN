@@ -25,6 +25,7 @@ const initialUsers: User[] = [
     { id: 'user-jane-doe', name: 'Jane Doe', balance: 250, transactions: [], role: 'user' },
     { id: 'admin-main', name: 'Main Admin', balance: 0, transactions: [], role: 'admin' },
     { id: 'admin-canteen', name: 'Canteen Admin', balance: 0, transactions: [], role: 'admin' },
+    { id: 'admin-new', name: 'New Admin', balance: 0, transactions: [], role: 'admin' },
 ];
 
 
