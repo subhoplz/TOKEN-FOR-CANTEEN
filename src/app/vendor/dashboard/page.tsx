@@ -7,10 +7,10 @@ import Header from "@/components/app/Header";
 import { useCanteenPass } from "@/hooks/use-canteen-pass";
 import { HardDrive, QrCode, Utensils } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 export default function VendorDashboardPage() {
-    const { loading, currentUser } = useCanteenPass();
+    const { loading, currentUser, transactions } = useCanteenPass();
     const router = useRouter();
 
      useEffect(() => {
@@ -19,8 +19,20 @@ export default function VendorDashboardPage() {
         }
     }, [loading, currentUser, router]);
 
+    const mealsToday = useMemo(() => {
+        return transactions.filter(t => {
+            const today = new Date();
+            const txDate = new Date(t.timestamp);
+            return t.type === 'debit' && txDate.toDateString() === today.toDateString();
+        }).length;
+    }, [transactions]);
+
     if (loading || !currentUser) {
-        return <p>Loading or redirecting...</p>
+        return (
+            <div className="flex h-screen items-center justify-center">
+                <p>Loading or redirecting...</p>
+            </div>
+        );
     }
 
     return (
@@ -47,8 +59,8 @@ export default function VendorDashboardPage() {
                                 <Utensils className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">0</div>
-                                <p className="text-xs text-muted-foreground">Will update after transactions</p>
+                                <div className="text-2xl font-bold">{mealsToday}</div>
+                                <p className="text-xs text-muted-foreground">Transactions processed today</p>
                             </CardContent>
                         </Card>
                          <Card>

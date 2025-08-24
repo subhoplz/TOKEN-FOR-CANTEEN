@@ -14,6 +14,7 @@ import PayVendorDialog from '@/components/app/PayVendorDialog';
 import TransactionHistoryDialog from '@/components/app/TransactionHistoryDialog';
 import MyQrCodeDialog from '@/components/app/MyQrCodeDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Card } from '@/components/ui/card';
 
 export default function DashboardPage() {
   const { loading, currentUser, logout } = useCanteenPass();
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   }
 
   const getInitials = (name: string) => {
+    if (!name) return '';
     const names = name.split(' ');
     if (names.length > 1) {
       return `${names[0][0]}${names[names.length - 1][0]}`;
@@ -48,12 +50,12 @@ export default function DashboardPage() {
             <Header />
             <main className="flex-1 p-4 sm:p-6 lg:p-8">
                 <div className="max-w-md mx-auto space-y-6">
-                    <Skeleton className="h-16 rounded-xl" />
+                    <Skeleton className="h-20 rounded-xl" />
                     <Skeleton className="h-48 rounded-xl" />
                     <Skeleton className="h-64 rounded-xl" />
                     <div className='flex gap-4'>
-                        <Skeleton className="h-14 flex-1 rounded-xl" />
-                        <Skeleton className="h-14 flex-1 rounded-xl" />
+                        <Skeleton className="h-20 flex-1 rounded-xl" />
+                        <Skeleton className="h-20 flex-1 rounded-xl" />
                     </div>
                 </div>
             </main>
@@ -68,7 +70,7 @@ export default function DashboardPage() {
       <main className="flex-1 p-4 sm:p-6 lg:p-8">
         <div className="max-w-md mx-auto grid gap-6">
             
-            <div className='flex items-center gap-4 p-4 bg-card rounded-xl shadow-sm'>
+            <Card className='flex items-center gap-4 p-4 shadow-sm'>
                 <Avatar className='h-16 w-16 border-2 border-primary'>
                     <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${currentUser.name}`} alt={currentUser.name} />
                     <AvatarFallback className='text-2xl'>{getInitials(currentUser.name)}</AvatarFallback>
@@ -77,20 +79,20 @@ export default function DashboardPage() {
                     <h2 className='text-xl font-bold'>{currentUser.name}</h2>
                     <p className='text-sm text-muted-foreground'>{currentUser.employeeId}</p>
                 </div>
-                <Button variant="ghost" size="icon" className='ml-auto' onClick={() => setMyQrOpen(true)}>
+                 <Button variant="ghost" size="icon" className='ml-auto' onClick={() => setMyQrOpen(true)}>
                     <UserSquare className='h-7 w-7 text-primary' />
                 </Button>
-            </div>
+            </Card>
 
             <BalanceCard />
 
             <MenuCard />
 
             <div className="grid grid-cols-2 gap-4">
-                 <Button className='py-8 text-lg' onClick={() => setPayVendorOpen(true)}>
-                    <QrCode className="mr-2 h-6 w-6" /> Scan QR
+                 <Button className='py-8 text-lg h-auto' onClick={() => setPayVendorOpen(true)}>
+                    <QrCode className="mr-2 h-6 w-6" /> Scan to Pay
                 </Button>
-                <Button className='py-8 text-lg' variant="outline" onClick={() => setHistoryOpen(true)}>
+                <Button className='py-8 text-lg h-auto' variant="outline" onClick={() => setHistoryOpen(true)}>
                     <History className="mr-2 h-6 w-6" /> View History
                 </Button>
             </div>
