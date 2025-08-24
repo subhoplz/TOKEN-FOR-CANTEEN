@@ -12,7 +12,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
             <div className="inline-flex items-center gap-3 text-4xl font-bold text-primary mb-2">
                 <UtensilsCrossed className="h-10 w-10" />
-                <span className="font-headline">CanteenPass</span>
+                <span className="font-headline">SmartCanteen</span>
             </div>
             <p className="text-muted-foreground text-lg">Welcome! Please select your login type.</p>
         </div>

@@ -6,7 +6,7 @@ import type { Metadata } from 'next';
 import ClientLayout from './client-layout';
 
 export const metadata: Metadata = {
-  title: 'CanteenPass',
+  title: 'SmartCanteen',
   description: 'Manage your canteen tokens with ease.',
 };
 

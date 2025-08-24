@@ -5,7 +5,7 @@ import { useCanteenPass } from '@/hooks/use-canteen-pass';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Users, Shield, Edit, Trash2, Plus } from 'lucide-react';
+import { PlusCircle, Users, Shield, Edit, Trash2, Plus, Search } from 'lucide-react';
 import AddUserDialog from './AddUserDialog';
 import { User } from '@/lib/types';
 import { Badge } from '../ui/badge';
@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '../ui/label';
 
 export default function UserManagement() {
-  const { users, switchUser, currentUser, deleteUser, editUser, addTokensToUser } = useCanteenPass();
+  const { users, deleteUser, editUser, addTokensToUser } = useCanteenPass();
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
@@ -25,6 +25,7 @@ export default function UserManagement() {
   const [editedEmployeeId, setEditedEmployeeId] = useState('');
   const [userToFund, setUserToFund] = useState<User | null>(null);
   const [fundAmount, setFundAmount] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleDeleteConfirm = () => {
     if (userToDelete) {
@@ -55,82 +56,88 @@ export default function UserManagement() {
     }
   }
 
+  const filteredUsers = users.filter(user => 
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <>
-      <Card className="shadow-md rounded-xl">
-        <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-                <CardTitle className="flex items-center gap-2"><Users /> User Management</CardTitle>
-                <CardDescription>View and manage user accounts and their token balances.</CardDescription>
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold">Employee Management</h1>
+        <div className="flex justify-between items-center">
+            <div className='relative w-full max-w-sm'>
+                <Search className='absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+                <Input 
+                    placeholder='Search by name or ID...'
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8"
+                />
             </div>
             <Button onClick={() => setAddUserOpen(true)}>
-                <PlusCircle className="mr-2 h-5 w-5" /> Add User
+                <PlusCircle className="mr-2 h-5 w-5" /> Add Employee
             </Button>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Employee ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
-                <TableHead className="text-center">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user: User) => (
-                <TableRow key={user.id} className={currentUser?.id === user.id ? 'bg-secondary' : ''}>
-                  <TableCell className="font-mono text-xs">{user.employeeId}</TableCell>
-                  <TableCell className="font-medium">{user.name}</TableCell>
-                  <TableCell>
-                    <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
-                        {user.role === 'admin' && <Shield className='mr-1 h-3 w-3'/>}
-                        {user.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">{user.balance} Tokens</TableCell>
-                  <TableCell className="text-center space-x-2">
-                     <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => switchUser(user.id)}
-                      disabled={currentUser?.id === user.id}
-                    >
-                      {currentUser?.id === user.id ? 'Active' : 'Set Active'}
-                    </Button>
-                     <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" disabled={currentUser?.id === user.id && user.role === 'admin'}>
-                                ...
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                             <DropdownMenuItem onClick={() => setUserToFund(user)}>
-                                <Plus className='mr-2 h-4 w-4' />
-                                Add Tokens
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => { setUserToEdit(user); setEditedName(user.name); setEditedEmployeeId(user.employeeId); }}>
-                                <Edit className='mr-2 h-4 w-4' />
-                                Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                                className='text-red-500' 
-                                onClick={() => setUserToDelete(user)} 
-                                disabled={user.role === 'admin'}
-                            >
-                                <Trash2 className='mr-2 h-4 w-4' />
-                                Delete
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+        </div>
+        <Card className="shadow-md rounded-xl">
+            <CardContent className="mt-6">
+            <Table>
+                <TableHeader>
+                <TableRow>
+                    <TableHead>Employee ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
+                    <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                {filteredUsers.map((user: User) => (
+                    <TableRow key={user.id}>
+                    <TableCell className="font-mono text-xs">{user.employeeId}</TableCell>
+                    <TableCell className="font-medium">{user.name}</TableCell>
+                    <TableCell>
+                        <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                            {user.role === 'admin' && <Shield className='mr-1 h-3 w-3'/>}
+                            {user.role}
+                        </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">{user.balance.toLocaleString()} Tokens</TableCell>
+                    <TableCell className="text-center">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                    ...
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                <DropdownMenuItem onClick={() => setUserToFund(user)}>
+                                    <Plus className='mr-2 h-4 w-4' />
+                                    Add Tokens
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => { setUserToEdit(user); setEditedName(user.name); setEditedEmployeeId(user.employeeId); }}>
+                                    <Edit className='mr-2 h-4 w-4' />
+                                    Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                    className='text-red-500' 
+                                    onClick={() => setUserToDelete(user)} 
+                                    disabled={user.role === 'admin'}
+                                >
+                                    <Trash2 className='mr-2 h-4 w-4' />
+                                    Delete
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </TableCell>
+                    </TableRow>
+                ))}
+                </TableBody>
+            </Table>
+            </CardContent>
+        </Card>
+      </div>
+      
       
       {/* Dialogs */}
       <AddUserDialog open={addUserOpen} onOpenChange={setAddUserOpen} />

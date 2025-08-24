@@ -56,12 +56,16 @@ export function useCanteenPassState() {
       const storedUsers = localStorage.getItem('canteen-users');
       const storedCurrentUserId = localStorage.getItem('canteen-current-user-id');
       
-      let loadedUsers: User[] = initialUsers;
+      let loadedUsers: User[] = [];
       if (storedUsers) {
         const parsedUsers = JSON.parse(storedUsers);
-        if (parsedUsers.length > 0) {
+        if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
             loadedUsers = parsedUsers;
+        } else {
+            loadedUsers = initialUsers;
         }
+      } else {
+        loadedUsers = initialUsers;
       }
       setUsers(loadedUsers);
 
@@ -166,36 +170,39 @@ export function useCanteenPassState() {
   }, [currentUser, toast]);
 
   const addTokensToUser = useCallback((userId: string, amount: number) => {
-    setUsers(prevUsers => prevUsers.map(user => {
-      if (user.id === userId) {
-        const newTransaction: Transaction = {
-          id: crypto.randomUUID(),
-          type: 'credit',
-          amount,
-          description: 'Tokens added by admin',
-          timestamp: Date.now(),
-        };
-        const updatedUser = {
-          ...user,
-          balance: user.balance + amount,
-          transactions: [newTransaction, ...user.transactions],
-          lastUpdated: Date.now(),
-        };
-        
-        // If the funded user is the current user, update the context
-        if(currentUser?.id === userId) {
-            setCurrentUser(updatedUser);
+    setUsers(prevUsers => {
+      const newUsers = prevUsers.map(user => {
+        if (user.id === userId) {
+          const newTransaction: Transaction = {
+            id: crypto.randomUUID(),
+            type: 'credit',
+            amount,
+            description: 'Tokens added by admin',
+            timestamp: Date.now(),
+          };
+          const updatedUser = {
+            ...user,
+            balance: user.balance + amount,
+            transactions: [newTransaction, ...user.transactions],
+            lastUpdated: Date.now(),
+          };
+          
+          // If the funded user is the current user, update the context
+          if(currentUser?.id === userId) {
+              setCurrentUser(updatedUser);
+          }
+  
+          toast({
+              title: 'Success',
+              description: `${amount} tokens added to ${user.name}'s account.`,
+          });
+  
+          return updatedUser;
         }
-
-        toast({
-            title: 'Success',
-            description: `${amount} tokens added to ${user.name}'s account.`,
-        });
-
-        return updatedUser;
-      }
-      return user;
-    }));
+        return user;
+      });
+      return newUsers;
+    });
   }, [currentUser, toast]);
 
 
@@ -248,42 +255,52 @@ export function useCanteenPassState() {
   }, [currentUser]);
   
   const deleteUser = useCallback((userId: string) => {
-    setUsers(prev => prev.filter(user => {
-        if (user.id === userId) {
-            if (user.role === 'admin') {
-                toast({ title: "Action Forbidden", description: "Admin users cannot be deleted.", variant: "destructive" });
-                return true; // Keep admin user
-            }
-            if (currentUser?.id === userId) {
-                setCurrentUser(null); // Logout if deleting self
-            }
-            toast({ title: "User Deleted", description: `User ${user.name} has been removed.`});
-            return false; // Remove user
+    setUsers(prev => {
+        const userToDelete = prev.find(user => user.id === userId);
+        if (!userToDelete) return prev;
+
+        if (userToDelete.role === 'admin') {
+            toast({ title: "Action Forbidden", description: "Admin users cannot be deleted.", variant: "destructive" });
+            return prev;
         }
-        return true;
-    }));
+
+        const newUsers = prev.filter(user => user.id !== userId);
+
+        if (currentUser?.id === userId) {
+            setCurrentUser(null);
+        }
+        toast({ title: "User Deleted", description: `User ${userToDelete.name} has been removed.`});
+        return newUsers;
+    });
   }, [currentUser?.id, toast]);
   
   const editUser = useCallback((userId: string, name: string, employeeId: string) => {
-     setUsers(prev => prev.map(user => {
-        if (user.id === userId) {
-            const updatedUser = { ...user, name, employeeId, lastUpdated: Date.now() };
-            if (currentUser?.id === userId) {
-                setCurrentUser(updatedUser);
+     setUsers(prev => {
+        const newUsers = prev.map(user => {
+            if (user.id === userId) {
+                const updatedUser = { ...user, name, employeeId, lastUpdated: Date.now() };
+                if (currentUser?.id === userId) {
+                    setCurrentUser(updatedUser);
+                }
+                toast({ title: "User Updated", description: "User details have been changed." });
+                return updatedUser;
             }
-            toast({ title: "User Updated", description: "User details have been changed." });
-            return updatedUser;
-        }
-        return user;
-     }));
+            return user;
+        });
+        return newUsers;
+     });
   }, [currentUser?.id, toast]);
+
+  // Aggregate all transactions for admin view
+  const allTransactions = users.flatMap(u => u.transactions);
+
 
   return { 
     loading, 
     users,
     currentUser,
     balance: currentUser?.balance ?? 0,
-    transactions: currentUser?.transactions ?? [],
+    transactions: currentUser?.role === 'admin' ? allTransactions : (currentUser?.transactions ?? []),
     addUser,
     addTokens, 
     addTokensToUser,

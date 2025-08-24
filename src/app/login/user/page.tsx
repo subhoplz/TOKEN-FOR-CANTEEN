@@ -30,7 +30,7 @@ export default function UserLoginPage() {
                     <CardHeader className="text-center">
                          <div className="inline-flex items-center gap-2 text-2xl font-bold text-primary mb-2 justify-center">
                             <UtensilsCrossed className="h-7 w-7" />
-                            <span className="font-headline">CanteenPass</span>
+                            <span className="font-headline">SmartCanteen</span>
                         </div>
                         <CardTitle className="text-3xl">User Login</CardTitle>
                         <CardDescription>Select your account to continue</CardDescription>

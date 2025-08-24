@@ -5,6 +5,7 @@ import QrValidator from "@/components/app/QrValidator";
 import { useCanteenPass } from "@/hooks/use-canteen-pass";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import AdminLayout from "../admin/layout";
 
 export default function VendorPage() {
     const { loading, currentUser } = useCanteenPass();
@@ -12,10 +13,8 @@ export default function VendorPage() {
 
      useEffect(() => {
         if (!loading) {
-            if (!currentUser) {
+            if (!currentUser || currentUser.role !== 'admin') {
                 router.push('/login/admin');
-            } else if (currentUser.role !== 'admin') {
-                router.push('/login');
             }
         }
     }, [loading, currentUser, router]);
@@ -25,13 +24,10 @@ export default function VendorPage() {
     }
 
     return (
-        <div className="flex flex-col min-h-screen bg-background">
-            <Header />
-            <main className="flex-1 p-4 sm:p-6 lg:p-8 flex items-center justify-center">
-                <div className="max-w-2xl w-full">
-                   <QrValidator />
-                </div>
-            </main>
-        </div>
+        <AdminLayout>
+            <div className="max-w-2xl w-full mx-auto">
+                <QrValidator />
+            </div>
+        </AdminLayout>
     )
 }
