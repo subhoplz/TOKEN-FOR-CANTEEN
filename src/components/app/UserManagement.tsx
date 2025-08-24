@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -60,6 +61,11 @@ export default function UserManagement() {
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  
+  const getLastMeal = (user: User) => {
+    const lastDebit = user.transactions.find(t => t.type === 'debit');
+    return lastDebit ? lastDebit.description : 'N/A';
+  }
 
   return (
     <>
@@ -87,6 +93,7 @@ export default function UserManagement() {
                     <TableHead>Employee ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Role</TableHead>
+                    <TableHead>Last Meal</TableHead>
                     <TableHead className="text-right">Balance</TableHead>
                     <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
@@ -102,6 +109,7 @@ export default function UserManagement() {
                             {user.role}
                         </Badge>
                     </TableCell>
+                    <TableCell>{getLastMeal(user)}</TableCell>
                     <TableCell className="text-right font-semibold">{user.balance.toLocaleString()} Tokens</TableCell>
                     <TableCell className="text-center">
                         <DropdownMenu>

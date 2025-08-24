@@ -3,7 +3,9 @@
 
 import { useCanteenPass } from "@/hooks/use-canteen-pass";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Wallet, Utensils } from "lucide-react";
+import { Users, Wallet, Utensils, BarChart } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default function AdminDashboardPage() {
     const { users, transactions } = useCanteenPass();
@@ -55,10 +57,18 @@ export default function AdminDashboardPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Token Usage</CardTitle>
+                    <CardTitle>Reports & Analytics</CardTitle>
+                    <CardDescription>
+                        Dive deeper into your canteen's data.
+                    </CardDescription>
                 </CardHeader>
-                <CardContent className="h-80 flex items-center justify-center">
-                    <p className="text-muted-foreground">Chart placeholder - a real chart would go here.</p>
+                <CardContent className="h-40 flex items-center justify-center flex-col gap-4">
+                    <p className="text-muted-foreground">View detailed reports and analytics.</p>
+                    <Button asChild>
+                        <Link href="/admin/reports">
+                            <BarChart className="mr-2 h-4 w-4" /> Go to Reports
+                        </Link>
+                    </Button>
                 </CardContent>
             </Card>
         </div>
