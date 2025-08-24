@@ -1,14 +1,20 @@
+
 "use client";
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { LogOut, UtensilsCrossed, Shield, User as UserIcon, Settings, Bell, UserCog } from 'lucide-react';
+import { LogOut, UtensilsCrossed, Shield, User as UserIcon, Settings, Bell, UserCog, Download } from 'lucide-react';
 import { useCanteenPass } from '@/hooks/use-canteen-pass';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 
-export default function Header() {
+interface HeaderProps {
+    onInstallClick?: () => void;
+    showInstallButton?: boolean;
+}
+
+export default function Header({ onInstallClick, showInstallButton }: HeaderProps) {
   const { currentUser, logout } = useCanteenPass();
   const router = useRouter();
 
@@ -36,6 +42,12 @@ export default function Header() {
           <nav className='flex items-center gap-2'>
             {currentUser ? (
               <>
+                {showInstallButton && (
+                    <Button variant="outline" size="sm" onClick={onInstallClick}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Install App
+                    </Button>
+                )}
                 <Button variant="ghost" size="icon" className='relative'>
                     <Bell className="h-5 w-5" />
                     <span className='absolute top-2 right-2 block h-2 w-2 rounded-full bg-primary' />
