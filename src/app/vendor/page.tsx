@@ -15,7 +15,7 @@ export default function VendorPage() {
             if (!currentUser) {
                 router.push('/login/admin');
             } else if (currentUser.role !== 'admin') {
-                router.push('/');
+                router.push('/login/admin');
             }
         }
     }, [loading, currentUser, router]);

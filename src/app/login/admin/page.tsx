@@ -18,7 +18,12 @@ export default function AdminLoginPage() {
     const handleLogin = () => {
         if (selectedUser) {
             switchUser(selectedUser);
-            router.push('/admin');
+            const user = users.find(u => u.id === selectedUser);
+            if (user?.role === 'admin') {
+                router.push('/admin');
+            } else {
+                router.push('/');
+            }
         }
     };
     
@@ -41,7 +46,7 @@ export default function AdminLoginPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {adminUsers.length > 0 ? (
-                        <RadioGroup onValueChange={setSelectedUser}>
+                        <RadioGroup onValueChange={setSelectedUser} value={selectedUser || undefined}>
                             {adminUsers.map(user => (
                                 <Label key={user.id} htmlFor={user.id} className="flex items-center gap-4 p-4 border rounded-md cursor-pointer hover:bg-accent/50 has-[[data-state=checked]]:bg-accent/80 has-[[data-state=checked]]:border-primary">
                                     <RadioGroupItem value={user.id} id={user.id} />

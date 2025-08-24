@@ -95,7 +95,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
             <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="amount" className="text-right">Amount</Label>
-                    <Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.targe.value)} className="col-span-3" placeholder="e.g., 25" />
+                    <Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="col-span-3" placeholder="e.g., 25" />
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="description" className="text-right">For</Label>
