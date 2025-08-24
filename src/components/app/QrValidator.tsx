@@ -39,6 +39,7 @@ export default function QrValidator() {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
 
     const validateSignature = (data: QrCodeData) => {
         const dataString = `${data.employee_id}|${data.timestamp}|CanteenPass-Secret-Key`; // Added a static "secret"
@@ -53,11 +54,22 @@ export default function QrValidator() {
         return data.device_signature === expectedSignature;
     };
 
+    const stopCamera = useCallback(() => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+        setIsScanning(false);
+    }, []);
+    
     const handleValidate = useCallback((qrInput: string) => {
         setError(null);
         setValidatedData(null);
         setSignatureValid(false);
-        setIsScanning(false); // Stop scanning once a QR code is processed
+        stopCamera();
 
         if (!qrInput.trim()) {
             setError("QR data cannot be empty.");
@@ -94,10 +106,38 @@ export default function QrValidator() {
         } catch (e) {
             setError("Invalid QR data format. Scanned data is not valid JSON.");
         }
-    }, [users]);
+    }, [users, stopCamera]);
 
 
-    const tick = useCallback(() => {
+    const startCamera = useCallback(async () => {
+        if (streamRef.current) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            streamRef.current = stream;
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            }
+            setHasCameraPermission(true);
+            setIsScanning(true);
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            setHasCameraPermission(false);
+            toast({
+                variant: 'destructive',
+                title: 'Camera Access Denied',
+                description: 'Please enable camera permissions in your browser settings to use this app.',
+            });
+        }
+    }, [toast]);
+      
+      useEffect(() => {
+        startCamera();
+        return () => {
+          stopCamera();
+        };
+      }, [startCamera, stopCamera]);
+      
+      const tick = useCallback(() => {
         if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA && isScanning) {
             const video = videoRef.current;
             const canvas = canvasRef.current;
@@ -122,41 +162,16 @@ export default function QrValidator() {
             requestAnimationFrame(tick);
         }
     }, [isScanning, handleValidate]);
-
-
-    useEffect(() => {
-        const getCameraPermission = async () => {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-            }
-            setHasCameraPermission(true);
-          } catch (error) {
-            console.error('Error accessing camera:', error);
-            setHasCameraPermission(false);
-            toast({
-              variant: 'destructive',
-              title: 'Camera Access Denied',
-              description: 'Please enable camera permissions in your browser settings to use this app.',
-            });
-          }
-        };
-    
-        getCameraPermission();
-    
-        return () => {
-          if (videoRef.current && videoRef.current.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
-          }
-        };
-      }, [toast]);
       
       useEffect(() => {
+        let animationFrameId: number;
         if (hasCameraPermission && isScanning) {
-            const animationFrameId = requestAnimationFrame(tick);
-            return () => cancelAnimationFrame(animationFrameId);
+            animationFrameId = requestAnimationFrame(tick);
+        }
+        return () => {
+            if(animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
         }
     }, [hasCameraPermission, isScanning, tick]);
 
@@ -191,7 +206,7 @@ export default function QrValidator() {
         setScannedUser(null);
         setError(null);
         setSignatureValid(false);
-        setIsScanning(true);
+        startCamera();
     }
 
     return (
@@ -205,7 +220,7 @@ export default function QrValidator() {
             </CardHeader>
             <CardContent>
                 <div className="relative aspect-square w-full max-w-sm mx-auto overflow-hidden rounded-lg border bg-secondary">
-                    {!validatedData && !error ? (
+                    {isScanning ? (
                         <>
                             <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
                             <canvas ref={canvasRef} style={{ display: 'none' }} />
