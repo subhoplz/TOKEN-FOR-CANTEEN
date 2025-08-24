@@ -12,10 +12,13 @@ interface CanteenPassContextType {
   transactions: Transaction[];
   addUser: (name: string, role?: 'user' | 'admin') => void;
   addTokens: (amount: number) => void;
+  addTokensToUser: (userId: string, amount: number) => void;
   spendTokens: (amount: number, description: string) => { success: boolean; data: string | null };
   getSpendingHabits: () => string;
   switchUser: (userId: string) => void;
   logout: () => void;
+  deleteUser: (userId: string) => void;
+  editUser: (userId: string, name: string) => void;
 }
 
 export const CanteenPassContext = createContext<CanteenPassContextType | undefined>(undefined);
@@ -146,6 +149,39 @@ export function useCanteenPassState() {
     });
   }, [currentUser, toast]);
 
+  const addTokensToUser = useCallback((userId: string, amount: number) => {
+    setUsers(prevUsers => prevUsers.map(user => {
+      if (user.id === userId) {
+        const newTransaction: Transaction = {
+          id: crypto.randomUUID(),
+          type: 'credit',
+          amount,
+          description: 'Tokens added by admin',
+          timestamp: Date.now(),
+        };
+        const updatedUser = {
+          ...user,
+          balance: user.balance + amount,
+          transactions: [newTransaction, ...user.transactions],
+        };
+        
+        // If the funded user is the current user, update the context
+        if(currentUser?.id === userId) {
+            setCurrentUser(updatedUser);
+        }
+
+        toast({
+            title: 'Success',
+            description: `${amount} tokens added to ${user.name}'s account.`,
+        });
+
+        return updatedUser;
+      }
+      return user;
+    }));
+  }, [currentUser, toast]);
+
+
   const spendTokens = useCallback((amount: number, description: string) => {
     if (!currentUser) return { success: false, data: "No active user." };
     if (amount <= 0) return { success: false, data: "Amount must be positive." };
@@ -192,6 +228,37 @@ export function useCanteenPassState() {
 
     return `User has made ${debitTransactions.length} purchases. Average purchase amount is ${avgSpent.toFixed(2)} tokens. They spend tokens approximately ${frequency.toFixed(1)} times a day.`;
   }, [currentUser]);
+  
+  const deleteUser = useCallback((userId: string) => {
+    setUsers(prev => prev.filter(user => {
+        if (user.id === userId) {
+            if (user.role === 'admin') {
+                toast({ title: "Action Forbidden", description: "Admin users cannot be deleted.", variant: "destructive" });
+                return true; // Keep admin user
+            }
+            if (currentUser?.id === userId) {
+                setCurrentUser(null); // Logout if deleting self
+            }
+            toast({ title: "User Deleted", description: `User ${user.name} has been removed.`});
+            return false; // Remove user
+        }
+        return true;
+    }));
+  }, [currentUser?.id, toast]);
+  
+  const editUser = useCallback((userId: string, name: string) => {
+     setUsers(prev => prev.map(user => {
+        if (user.id === userId) {
+            const updatedUser = { ...user, name };
+            if (currentUser?.id === userId) {
+                setCurrentUser(updatedUser);
+            }
+            toast({ title: "User Updated", description: "User details have been changed." });
+            return updatedUser;
+        }
+        return user;
+     }));
+  }, [currentUser?.id, toast]);
 
   return { 
     loading, 
@@ -201,10 +268,13 @@ export function useCanteenPassState() {
     transactions: currentUser?.transactions ?? [],
     addUser,
     addTokens, 
+    addTokensToUser,
     spendTokens, 
     getSpendingHabits,
     switchUser,
     logout,
+    deleteUser,
+    editUser
   };
 }
 
