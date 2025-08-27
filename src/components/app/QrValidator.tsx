@@ -26,6 +26,7 @@ interface QrCodeData {
 }
 
 export default function QrValidator() {
+    const [scannedCode, setScannedCode] = useState<string | null>(null);
     const [validatedData, setValidatedData] = useState<QrCodeData | null>(null);
     const [scannedUser, setScannedUser] = useState<User | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -40,7 +41,6 @@ export default function QrValidator() {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const streamRef = useRef<MediaStream | null>(null);
     const animationFrameIdRef = useRef<number | null>(null);
 
     const validateSignature = (data: QrCodeData) => {
@@ -57,31 +57,26 @@ export default function QrValidator() {
     };
     
     const stopCamera = useCallback(() => {
-        setIsScanning(false);
-        if (animationFrameIdRef.current) {
-            cancelAnimationFrame(animationFrameIdRef.current);
-            animationFrameIdRef.current = null;
-        }
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-        }
-        if (videoRef.current && videoRef.current.srcObject) {
-          try {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
-            videoRef.current.srcObject = null;
-          } catch (e) {
-            console.error("Error stopping camera stream:", e);
-          }
-        }
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
     }, []);
-    
+
     const handleValidate = useCallback((qrInput: string) => {
-        stopCamera();
+        setIsProcessing(true);
+        setError(null);
+        setValidatedData(null);
+        setScannedUser(null);
+        setSignatureValid(false);
 
         if (!qrInput.trim()) {
             setError("QR data is empty.");
+            setIsProcessing(false);
             return;
         }
 
@@ -93,16 +88,16 @@ export default function QrValidator() {
                 throw new Error("Missing required field in QR data.");
             }
 
-            // Find the most up-to-date user data from the context
             const userInDb = users.find(u => u.employeeId === parsed.employee_id);
             if (!userInDb) {
                  setError("User not found in the local database. The vendor app may need to be online to sync.");
                  setSignatureValid(false);
                  setScannedUser(null);
+                 setIsProcessing(false);
                  return;
             }
+
             setScannedUser(userInDb);
-            
             const displayData = { ...parsed, name: parsed.name || userInDb.name };
             setValidatedData(displayData);
             
@@ -113,16 +108,30 @@ export default function QrValidator() {
             }
         } catch (e) {
             setError("Invalid QR code. Scanned data is not valid JSON.");
+        } finally {
+            setIsProcessing(false);
         }
-    }, [users, stopCamera]);
+    }, [users]);
+    
+    useEffect(() => {
+        if (scannedCode) {
+            stopCamera();
+            setIsScanning(false);
+            handleValidate(scannedCode);
+        }
+    }, [scannedCode, stopCamera, handleValidate]);
 
     const tick = useCallback(() => {
-        if (!isScanning || !videoRef.current || !canvasRef.current) return;
+        if (!videoRef.current || !canvasRef.current) {
+            animationFrameIdRef.current = requestAnimationFrame(tick);
+            return;
+        };
 
         if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
             const video = videoRef.current;
             const canvas = canvasRef.current;
             const context = canvas.getContext('2d', { willReadFrequently: true });
+            
             if (context) {
                 canvas.height = video.videoHeight;
                 canvas.width = video.videoWidth;
@@ -132,55 +141,43 @@ export default function QrValidator() {
                     inversionAttempts: 'dontInvert',
                 });
 
-                if (code) {
-                    handleValidate(code.data);
-                    return; // Stop ticking once a code is found
+                if (code && code.data) {
+                    setScannedCode(code.data);
+                    return; // Stop the loop
                 }
             }
         }
         animationFrameIdRef.current = requestAnimationFrame(tick);
-    }, [isScanning, handleValidate]);
+    }, []);
 
     const startCamera = useCallback(async () => {
-        if (streamRef.current || hasCameraPermission === false) return; // Already running or permission denied
-        setHasCameraPermission(null); // Show loading state
+        setHasCameraPermission(null);
+        setError(null);
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-            streamRef.current = stream;
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
+                // Muted is important for autoplay to work on all browsers
+                videoRef.current.muted = true; 
+                videoRef.current.play().catch(e => console.error("Video play failed", e));
             }
             setHasCameraPermission(true);
             setIsScanning(true);
+            animationFrameIdRef.current = requestAnimationFrame(tick);
         } catch (error) {
             console.error('Error accessing camera:', error);
             setHasCameraPermission(false);
-            toast({
-                variant: 'destructive',
-                title: 'Camera Access Denied',
-                description: 'Please enable camera permissions in your browser settings to use this app.',
-            });
+            setError("Camera permission denied. Please allow camera access in your browser settings.");
         }
-    }, [toast, hasCameraPermission]);
+    }, [tick]);
       
     useEffect(() => {
         startCamera();
         return () => {
-          stopCamera();
+            stopCamera();
         };
     }, [startCamera, stopCamera]);
-      
-    useEffect(() => {
-        if (isScanning && hasCameraPermission) {
-            animationFrameIdRef.current = requestAnimationFrame(tick);
-        }
-        return () => {
-            if(animationFrameIdRef.current) {
-                cancelAnimationFrame(animationFrameIdRef.current);
-            }
-        }
-    }, [isScanning, hasCameraPermission, tick]);
 
     const handleDeduct = async () => {
         if (!scannedUser || !validatedData) return;
@@ -189,7 +186,6 @@ export default function QrValidator() {
         const mealCost = 1; // Or get from validatedData if transaction is included
         const mealDescription = validatedData.transaction?.description || "Meal served";
 
-        // IMPORTANT: Check balance from the live user state (scannedUser), not the QR data.
         if (scannedUser.balance < mealCost) {
             toast({
                 title: "Insufficient Balance",
@@ -219,13 +215,21 @@ export default function QrValidator() {
     }
     
     const handleReset = () => {
+        setScannedCode(null);
         setValidatedData(null);
         setScannedUser(null);
         setError(null);
         setSignatureValid(false);
-        setIsScanning(true);
+        setIsProcessing(false);
         startCamera();
     }
+
+    const showScanner = isScanning && hasCameraPermission;
+    const showResults = !isScanning && validatedData && scannedUser;
+    const showError = error;
+    const showPermissionDenied = hasCameraPermission === false;
+    const showLoading = hasCameraPermission === null;
+
 
     return (
         <Card className="w-full shadow-lg">
@@ -238,16 +242,39 @@ export default function QrValidator() {
             </CardHeader>
             <CardContent>
                 <div className="relative aspect-square w-full max-w-sm mx-auto overflow-hidden rounded-lg border bg-secondary">
-                    {!isScanning ? (
+                    
+                    {showLoading && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                        </div>
+                    )}
+                    
+                    {showPermissionDenied && (
+                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-white p-4 h-full text-center">
+                            <VideoOff className="h-12 w-12 mb-4" />
+                            <h3 className="text-xl font-bold">Camera Access Denied</h3>
+                            <p>{error}</p>
+                        </div>
+                    )}
+
+                    {showScanner && (
+                        <>
+                            <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
+                            <canvas ref={canvasRef} style={{ display: 'none' }} />
+                            <div className="absolute inset-0 border-[8px] border-primary/50 rounded-lg" />
+                        </>
+                    )}
+
+                    {(showResults || showError) && !showScanner && (
                         <div className='space-y-4 p-4'>
-                            {error && (
+                             {error && (
                                 <Alert variant="destructive">
                                     <XCircle className="h-4 w-4" />
                                     <AlertTitle>Validation Failed</AlertTitle>
                                     <AlertDescription>{error}</AlertDescription>
                                 </Alert>
                             )}
-                            {validatedData && scannedUser && (
+                            {showResults && (
                                 <>
                                     {signatureValid ? (
                                         <Alert className='bg-green-600/10 border-green-600 text-green-700'>
@@ -283,25 +310,11 @@ export default function QrValidator() {
                                 </>
                             )}
                         </div>
-                    ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            {hasCameraPermission === null && <Loader2 className="h-12 w-12 animate-spin text-primary" />}
-                            {hasCameraPermission === false && (
-                                <div className="flex flex-col items-center justify-center bg-black/80 text-white p-4 h-full">
-                                    <VideoOff className="h-12 w-12 mb-4" />
-                                    <h3 className="text-xl font-bold">Camera Access Denied</h3>
-                                    <p className="text-center">Please enable camera permissions to scan QR codes.</p>
-                                </div>
-                            )}
-                        </div>
                     )}
-                    <video ref={videoRef} className={cn("w-full h-full object-cover", !isScanning && 'hidden')} autoPlay playsInline muted />
-                    <canvas ref={canvasRef} style={{ display: 'none' }} />
-                    <div className={cn("absolute inset-0 border-[8px] border-primary/50 rounded-lg", !isScanning && 'hidden')} />
                 </div>
             </CardContent>
             <CardFooter className='flex flex-col gap-2 pt-4'>
-                {scannedUser && validatedData && signatureValid ? (
+                {showResults && signatureValid ? (
                     <>
                         <Button className="w-full h-12 text-lg" onClick={handleDeduct} disabled={scannedUser.balance < 1 || isProcessing}>
                            {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Utensils className='mr-2' />}
@@ -318,3 +331,5 @@ export default function QrValidator() {
         </Card>
     );
 }
+
+    
