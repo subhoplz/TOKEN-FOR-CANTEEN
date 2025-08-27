@@ -1,7 +1,8 @@
+
 'use server';
 
 /**
- * @fileOverview Provides an AI-powered tool to suggest optimal token purchase amounts based on user spending habits,
+ * @fileOverview Provides a tool to suggest optimal token purchase amounts based on user spending habits,
  * day of the week, and available canteen menus.
  *
  * @module suggestTokenPurchase
@@ -46,7 +47,7 @@ const SuggestTokenPurchaseOutputSchema = z.object({
   reasoning:
     z.string()
     .describe(
-      'The AI reasoning behind the suggested purchase amount, considering spending habits, day of week, and available menus.'
+      'The reasoning behind the suggested purchase amount, considering spending habits, day of week, and available menus.'
     ),
 });
 export type SuggestTokenPurchaseOutput = z.infer<typeof SuggestTokenPurchaseOutputSchema>;
@@ -70,7 +71,7 @@ const suggestTokenPurchasePrompt = ai.definePrompt({
   name: 'suggestTokenPurchasePrompt',
   input: {schema: SuggestTokenPurchaseInputSchema},
   output: {schema: SuggestTokenPurchaseOutputSchema},
-  prompt: `You are an AI assistant designed to suggest optimal token purchase amounts for canteen users.
+  prompt: `You are a helpful assistant designed to suggest optimal token purchase amounts for canteen users.
 
   Consider the user's spending habits, the current day of the week, and the available canteen menus to provide a personalized suggestion.
   The user's current balance is {{currentBalance}}.

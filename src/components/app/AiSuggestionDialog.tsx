@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -52,7 +53,7 @@ export default function AiSuggestionDialog({ open, onOpenChange }: AiSuggestionD
 
       setSuggestion(result);
     } catch (error) {
-      console.error("AI suggestion failed:", error);
+      console.error("Suggestion failed:", error);
       toast({
         title: 'Suggestion Failed',
         description: 'Could not get a suggestion at this time.',
@@ -73,10 +74,10 @@ export default function AiSuggestionDialog({ open, onOpenChange }: AiSuggestionD
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="text-primary" /> AI Purchase Suggestion
+            <Sparkles className="text-primary" /> Purchase Suggestion
           </DialogTitle>
           <DialogDescription>
-            Let our AI analyze your habits and suggest an optimal token purchase amount.
+            Let us analyze your habits and suggest an optimal token purchase amount.
           </DialogDescription>
         </DialogHeader>
 
