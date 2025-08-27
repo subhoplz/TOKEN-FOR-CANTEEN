@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle, QrCode } from 'lucide-react';
+import { CheckCircle, QrCode, Loader2 } from 'lucide-react';
 
 interface PayVendorDialogProps {
   open: boolean;
@@ -28,10 +28,11 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [qrData, setQrData] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const { balance, spendTokens, currentUser } = useCanteenPass();
   const { toast } = useToast();
 
-  const handleGenerateQR = () => {
+  const handleGenerateQR = async () => {
     if (!currentUser) {
         toast({ title: 'No User Active', description: 'Please select a user first.', variant: 'destructive' });
         return;
@@ -50,7 +51,10 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
         return;
     }
 
-    const result = spendTokens(numericAmount, description);
+    setIsGenerating(true);
+    const result = await spendTokens(numericAmount, description);
+    setIsGenerating(false);
+
     if (result.success && result.data) {
         setQrData(result.data);
     } else {
@@ -108,8 +112,9 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
             {qrData ? (
                 <Button onClick={handleClose}>Done</Button>
             ) : (
-                <Button onClick={handleGenerateQR} disabled={!currentUser}>
-                    <QrCode className='mr-2 h-4 w-4' /> Generate Payment QR
+                <Button onClick={handleGenerateQR} disabled={!currentUser || isGenerating}>
+                    {isGenerating ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : <QrCode className='mr-2 h-4 w-4' />}
+                    {isGenerating ? 'Generating...' : 'Generate Payment QR'}
                 </Button>
             )}
         </DialogFooter>

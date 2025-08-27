@@ -10,19 +10,21 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
 export default function TransactionHistory() {
-  const { transactions } = useCanteenPass();
+  const { transactions, currentUser } = useCanteenPass();
+  const isAdmin = currentUser?.role === 'admin';
 
   return (
     <Card className="shadow-md rounded-xl h-full border-none">
       <CardHeader>
         <CardTitle>Transaction History</CardTitle>
-        <CardDescription>A record of your recent token activity.</CardDescription>
+        <CardDescription>A record of recent token activity.</CardDescription>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[450px]">
           <Table>
             <TableHeader>
               <TableRow>
+                {isAdmin && <TableHead>User</TableHead>}
                 <TableHead>Description</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Date</TableHead>
@@ -31,8 +33,9 @@ export default function TransactionHistory() {
             </TableHeader>
             <TableBody>
               {transactions.length > 0 ? (
-                transactions.map((tx) => (
+                transactions.map((tx: any) => (
                   <TableRow key={tx.id}>
+                    {isAdmin && <TableCell className="font-medium">{tx.userName || 'N/A'}</TableCell>}
                     <TableCell className="font-medium">{tx.description}</TableCell>
                     <TableCell>
                       <Badge variant={tx.type === 'credit' ? 'default' : 'secondary'} className={cn(tx.type === 'credit' && 'bg-accent text-accent-foreground')}>
@@ -47,7 +50,7 @@ export default function TransactionHistory() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">
+                  <TableCell colSpan={isAdmin ? 5 : 4} className="text-center h-24 text-muted-foreground">
                     No transactions yet.
                   </TableCell>
                 </TableRow>

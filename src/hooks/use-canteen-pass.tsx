@@ -4,6 +4,21 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import type { Transaction, User } from '@/lib/types';
 import { useToast } from './use-toast';
+import { db } from '@/lib/firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  addDoc, 
+  doc, 
+  updateDoc, 
+  deleteDoc,
+  writeBatch,
+  getDocs,
+  query,
+  where,
+  getDoc
+} from 'firebase/firestore';
+import { v4 as uuidv4 } from 'uuid';
 
 interface CanteenPassContextType {
   loading: boolean;
@@ -14,8 +29,8 @@ interface CanteenPassContextType {
   addUser: (name: string, employeeId: string, role?: 'user' | 'admin', password?: string) => void;
   addTokens: (amount: number) => void;
   addTokensToUser: (userId: string, amount: number) => void;
-  spendTokens: (amount: number, description: string) => { success: boolean; data: string | null };
-  spendTokensFromUser: (userId: string, amount: number, description: string) => { success: boolean; data: string | null };
+  spendTokens: (amount: number, description: string) => Promise<{ success: boolean; data: string | null }>;
+  spendTokensFromUser: (userId: string, amount: number, description: string) => Promise<{ success: boolean; data: string | null }>;
   getSpendingHabits: () => string;
   switchUser: (userId: string, password?: string) => void;
   logout: () => void;
@@ -25,11 +40,12 @@ interface CanteenPassContextType {
 
 export const CanteenPassContext = createContext<CanteenPassContextType | undefined>(undefined);
 
-const initialUsers: User[] = [
-    { id: 'user-alex-doe', employeeId: 'E12345', name: 'Alex Doe', password: 'password', balance: 100, transactions: [], role: 'user', lastUpdated: Date.now() },
-    { id: 'user-jane-doe', employeeId: 'E67890', name: 'Jane Doe', password: 'password', balance: 250, transactions: [], role: 'user', lastUpdated: Date.now() },
-    { id: 'admin-main', employeeId: 'A00001', name: 'Main Admin', password: 'password', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
-    { id: 'admin-canteen', employeeId: 'A00002', name: 'Canteen Admin', password: 'password', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
+// Sample data to seed the database if it's empty
+const initialUsers: Omit<User, 'id'>[] = [
+    { employeeId: 'E12345', name: 'Alex Doe', password: 'password', balance: 100, transactions: [], role: 'user', lastUpdated: Date.now() },
+    { employeeId: 'E67890', name: 'Jane Doe', password: 'password', balance: 250, transactions: [], role: 'user', lastUpdated: Date.now() },
+    { employeeId: 'A00001', name: 'Main Admin', password: 'password', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
+    { employeeId: 'A00002', name: 'Canteen Admin', password: 'password', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
 ];
 
 
@@ -51,253 +67,242 @@ export function useCanteenPassState() {
     return `sig-${hash}`;
   };
 
+  // Seed database if it's empty
   useEffect(() => {
-    try {
-      const storedUsers = localStorage.getItem('canteen-users');
-      const storedCurrentUserId = localStorage.getItem('canteen-current-user-id');
-      
-      let loadedUsers: User[] = [];
-      if (storedUsers) {
-        const parsedUsers = JSON.parse(storedUsers);
-        if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
-            loadedUsers = parsedUsers;
-        } else {
-            loadedUsers = initialUsers;
+    const seedDatabase = async () => {
+        const usersCollection = collection(db, 'users');
+        const snapshot = await getDocs(usersCollection);
+        if (snapshot.empty) {
+            console.log("Seeding database with initial users...");
+            const batch = writeBatch(db);
+            initialUsers.forEach(userData => {
+                const docRef = doc(usersCollection);
+                batch.set(docRef, userData);
+            });
+            await batch.commit();
         }
-      } else {
-        loadedUsers = initialUsers;
-      }
-      setUsers(loadedUsers);
-
-      if (storedCurrentUserId) {
-          const currentUserId = JSON.parse(storedCurrentUserId);
-          const userToSet = loadedUsers.find(u => u.id === currentUserId);
-          setCurrentUser(userToSet || null);
-      }
-
-    } catch (error) {
-      console.error("Failed to load from local storage", error);
-      toast({ title: "Error", description: "Could not load your data.", variant: "destructive" });
-      setUsers(initialUsers);
-      setCurrentUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    if (!loading) {
-      try {
-        localStorage.setItem('canteen-users', JSON.stringify(users));
-        if (currentUser) {
-          localStorage.setItem('canteen-current-user-id', JSON.stringify(currentUser.id));
-        } else {
-            localStorage.removeItem('canteen-current-user-id');
-        }
-      } catch (error) {
-        console.error("Failed to save to local storage", error);
-        toast({ title: "Error", description: "Could not save your data.", variant: "destructive" });
-      }
-    }
-  }, [users, currentUser, loading, toast]);
-
-  const updateUserInList = (updatedUser: User) => {
-    setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
-  };
-  
-  const addUser = useCallback((name: string, employeeId: string, role: 'user' | 'admin' = 'user', password?: string) => {
-    const newUser: User = {
-      id: `${role}-${name.toLowerCase().replace(/\s/g, '-')}-${Math.random().toString(36).substr(2, 5)}`,
-      employeeId,
-      name,
-      password: password,
-      balance: role === 'admin' ? 0 : 0,
-      transactions: [],
-      role: role,
-      lastUpdated: Date.now()
     };
-    setUsers(prev => [...prev, newUser]);
-    toast({
-      title: `${role.charAt(0).toUpperCase() + role.slice(1)} Added`,
-      description: `${name} has been added to the system as a ${role}.`,
+    seedDatabase();
+  }, []);
+
+  // Listen for real-time updates to the users collection
+  useEffect(() => {
+    setLoading(true);
+    const usersCollection = collection(db, 'users');
+    const unsubscribe = onSnapshot(usersCollection, (snapshot) => {
+        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+        setUsers(usersData);
+
+        // Update current user with fresh data
+        if (currentUser) {
+            const updatedCurrentUser = usersData.find(u => u.id === currentUser.id);
+            if (updatedCurrentUser) {
+                setCurrentUser(updatedCurrentUser);
+                localStorage.setItem('canteen-current-user-id', JSON.stringify(updatedCurrentUser.id));
+            } else {
+                // The current user was deleted
+                setCurrentUser(null);
+                localStorage.removeItem('canteen-current-user-id');
+            }
+        }
+        setLoading(false);
+    }, (error) => {
+        console.error("Firestore snapshot error:", error);
+        toast({ title: "Error", description: "Could not fetch data from the database.", variant: "destructive" });
+        setLoading(false);
     });
+
+    // Restore current user from local storage on initial load
+    const storedCurrentUserId = localStorage.getItem('canteen-current-user-id');
+    if (storedCurrentUserId) {
+        const userId = JSON.parse(storedCurrentUserId);
+        const userDocRef = doc(db, 'users', userId);
+        getDoc(userDocRef).then(docSnap => {
+            if (docSnap.exists()) {
+                setCurrentUser({ id: docSnap.id, ...docSnap.data() } as User);
+            }
+        });
+    }
+
+
+    return () => unsubscribe();
+  }, [toast, currentUser?.id]);
+
+
+  const addUser = useCallback(async (name: string, employeeId: string, role: 'user' | 'admin' = 'user', password?: string) => {
+    try {
+        const usersCollection = collection(db, 'users');
+        await addDoc(usersCollection, {
+            employeeId,
+            name,
+            password: password || 'password', // Default password for simplicity
+            balance: role === 'admin' ? 0 : 0,
+            transactions: [],
+            role: role,
+            lastUpdated: Date.now()
+        });
+        toast({
+            title: `${role.charAt(0).toUpperCase() + role.slice(1)} Added`,
+            description: `${name} has been added to the system.`,
+        });
+    } catch (error) {
+        console.error("Error adding user:", error);
+        toast({ title: "Error", description: "Failed to add user.", variant: "destructive" });
+    }
   }, [toast]);
 
   const switchUser = useCallback((userId: string, password?: string) => {
     const userToSwitch = users.find(u => u.id === userId);
     if(userToSwitch) {
       if (userToSwitch.role !== 'admin' && userToSwitch.password && userToSwitch.password !== password) {
-          toast({
-              title: "Login Failed",
-              description: "The password you entered is incorrect.",
-              variant: "destructive",
-          });
+          toast({ title: "Login Failed", description: "The password you entered is incorrect.", variant: "destructive" });
           return;
       }
       setCurrentUser(userToSwitch);
-      toast({
-        title: "Login Successful",
-        description: `Welcome, ${userToSwitch.name}.`,
-      });
+      localStorage.setItem('canteen-current-user-id', JSON.stringify(userToSwitch.id));
+      toast({ title: "Login Successful", description: `Welcome, ${userToSwitch.name}.` });
     } else {
-        toast({
-            title: "Login Failed",
-            description: "User not found.",
-            variant: "destructive",
-        });
+        toast({ title: "Login Failed", description: "User not found.", variant: "destructive" });
     }
   }, [users, toast]);
 
   const logout = useCallback(() => {
     setCurrentUser(null);
-    toast({
-        title: "Logged Out",
-        description: "You have been successfully logged out."
-    });
+    localStorage.removeItem('canteen-current-user-id');
+    toast({ title: "Logged Out", description: "You have been successfully logged out." });
   }, [toast]);
 
-  const addTokens = useCallback((amount: number) => {
+  const addTokens = useCallback(async (amount: number) => {
     if (!currentUser) return;
     if (amount <= 0) return;
 
-    const newTransaction: Transaction = {
-      id: crypto.randomUUID(),
-      type: 'credit',
-      amount,
-      description: 'Self-assigned tokens',
-      timestamp: Date.now(),
-    };
-    
-    const updatedUser = {
-      ...currentUser,
-      balance: currentUser.balance + amount,
-      transactions: [newTransaction, ...currentUser.transactions],
-      lastUpdated: Date.now(),
-    };
-
-    setCurrentUser(updatedUser);
-    updateUserInList(updatedUser);
-
-    toast({
-      title: "Success",
-      description: `${amount} tokens added to ${currentUser.name}'s account.`,
-    });
+    try {
+        const userDocRef = doc(db, 'users', currentUser.id);
+        const newTransaction: Transaction = {
+            id: uuidv4(),
+            type: 'credit',
+            amount,
+            description: 'Self-assigned tokens',
+            timestamp: Date.now(),
+        };
+        
+        await updateDoc(userDocRef, {
+            balance: currentUser.balance + amount,
+            transactions: [newTransaction, ...currentUser.transactions],
+            lastUpdated: Date.now(),
+        });
+        
+        toast({ title: "Success", description: `${amount} tokens added to your account.` });
+    } catch (error) {
+        console.error("Error adding tokens:", error);
+        toast({ title: "Error", description: "Failed to add tokens.", variant: "destructive" });
+    }
   }, [currentUser, toast]);
 
-  const addTokensToUser = useCallback((userId: string, amount: number) => {
-    setUsers(prevUsers => {
-      const newUsers = prevUsers.map(user => {
-        if (user.id === userId) {
-          const newTransaction: Transaction = {
-            id: crypto.randomUUID(),
+  const addTokensToUser = useCallback(async (userId: string, amount: number) => {
+    if (amount <= 0) return;
+    const userToUpdate = users.find(u => u.id === userId);
+    if (!userToUpdate) return;
+    
+    try {
+        const userDocRef = doc(db, 'users', userId);
+        const newTransaction: Transaction = {
+            id: uuidv4(),
             type: 'credit',
             amount,
             description: 'Tokens added by admin',
             timestamp: Date.now(),
-          };
-          const updatedUser = {
-            ...user,
-            balance: user.balance + amount,
-            transactions: [newTransaction, ...user.transactions],
+        };
+
+        await updateDoc(userDocRef, {
+            balance: userToUpdate.balance + amount,
+            transactions: [newTransaction, ...userToUpdate.transactions],
             lastUpdated: Date.now(),
-          };
-          
-          if(currentUser?.id === userId) {
-              setCurrentUser(updatedUser);
-          }
-  
-          toast({
-              title: 'Success',
-              description: `${amount} tokens added to ${user.name}'s account.`,
-          });
-  
-          return updatedUser;
-        }
-        return user;
-      });
-      return newUsers;
-    });
-  }, [currentUser, toast]);
+        });
+
+        toast({ title: 'Success', description: `${amount} tokens added to ${userToUpdate.name}'s account.` });
+    } catch (error) {
+        console.error("Error adding tokens to user:", error);
+        toast({ title: "Error", description: `Failed to add tokens to ${userToUpdate.name}.`, variant: "destructive" });
+    }
+  }, [users, toast]);
 
 
-  const spendTokens = useCallback((amount: number, description: string) => {
+  const spendTokens = useCallback(async (amount: number, description: string) => {
     if (!currentUser) return { success: false, data: "No active user." };
     if (amount <= 0) return { success: false, data: "Amount must be positive." };
     if (currentUser.balance < amount) return { success: false, data: "Insufficient balance." };
 
-    const newTransaction: Transaction = {
-      id: crypto.randomUUID(),
-      type: 'debit',
-      amount,
-      description,
-      timestamp: Date.now(),
-    };
-    
-    const updatedUser: User = {
-      ...currentUser,
-      balance: currentUser.balance - amount,
-      transactions: [newTransaction, ...currentUser.transactions],
-      lastUpdated: Date.now(),
-    };
-
-    setCurrentUser(updatedUser);
-    updateUserInList(updatedUser);
-    
-    const qrPayload = {
-      employee_id: updatedUser.employeeId,
-      timestamp: new Date(updatedUser.lastUpdated).toISOString(),
-    };
-    const signature = createSignature(qrPayload);
-    
-    const qrData = {
-        ...qrPayload,
-        device_signature: signature,
-        name: updatedUser.name,
-        balance: updatedUser.balance,
-        transaction: {
-          amount: newTransaction.amount,
-          description: newTransaction.description
-        }
-    };
-
-    return { success: true, data: JSON.stringify(qrData, null, 2) };
-  }, [currentUser]);
-
-  const spendTokensFromUser = useCallback((userId: string, amount: number, description: string) => {
-    let success = false;
-    let data: string | null = "User not found.";
-    
-    setUsers(prevUsers => {
-      const newUsers = prevUsers.map(user => {
-        if (user.id === userId) {
-          if (user.balance < amount) {
-            data = "Insufficient balance.";
-            return user;
-          }
-          const newTransaction: Transaction = {
-            id: crypto.randomUUID(),
+    try {
+        const userDocRef = doc(db, 'users', currentUser.id);
+        const newTransaction: Transaction = {
+            id: uuidv4(),
             type: 'debit',
             amount,
             description,
             timestamp: Date.now(),
-          };
-          const updatedUser = {
-            ...user,
-            balance: user.balance - amount,
-            transactions: [newTransaction, ...user.transactions],
-            lastUpdated: Date.now(),
-          };
-          success = true;
-          data = "Transaction successful";
-          return updatedUser;
-        }
-        return user;
-      });
-      return newUsers;
-    });
+        };
+        
+        const newBalance = currentUser.balance - amount;
+        const newLastUpdated = Date.now();
+        
+        await updateDoc(userDocRef, {
+            balance: newBalance,
+            transactions: [newTransaction, ...currentUser.transactions],
+            lastUpdated: newLastUpdated,
+        });
 
-    return { success, data };
-  }, []);
+        const qrPayload = {
+            employee_id: currentUser.employeeId,
+            timestamp: new Date(newLastUpdated).toISOString(),
+        };
+        const signature = createSignature(qrPayload);
+        
+        const qrData = {
+            ...qrPayload,
+            device_signature: signature,
+            name: currentUser.name,
+            balance: newBalance,
+            transaction: {
+                amount: newTransaction.amount,
+                description: newTransaction.description
+            }
+        };
+
+        return { success: true, data: JSON.stringify(qrData, null, 2) };
+    } catch (error) {
+        console.error("Error spending tokens:", error);
+        return { success: false, data: "Failed to process transaction." };
+    }
+  }, [currentUser]);
+
+  const spendTokensFromUser = useCallback(async (userId: string, amount: number, description: string) => {
+    const userToUpdate = users.find(u => u.id === userId);
+    if (!userToUpdate) return { success: false, data: "User not found." };
+    if (userToUpdate.balance < amount) return { success: false, data: "Insufficient balance." };
+
+    try {
+        const userDocRef = doc(db, 'users', userId);
+        const newTransaction: Transaction = {
+            id: uuidv4(),
+            type: 'debit',
+            amount,
+            description,
+            timestamp: Date.now(),
+        };
+
+        await updateDoc(userDocRef, {
+            balance: userToUpdate.balance - amount,
+            transactions: [newTransaction, ...userToUpdate.transactions],
+            lastUpdated: Date.now(),
+        });
+        
+        return { success: true, data: "Transaction successful" };
+    } catch (error) {
+        console.error("Error spending tokens from user:", error);
+        return { success: false, data: "Failed to process transaction." };
+    }
+  }, [users]);
 
   const getSpendingHabits = useCallback(() => {
     const transactions = currentUser?.transactions || [];
@@ -313,44 +318,42 @@ export function useCanteenPassState() {
     return `User has made ${debitTransactions.length} purchases. Average purchase amount is ${avgSpent.toFixed(2)} tokens. They spend tokens approximately ${frequency.toFixed(1)} times a day.`;
   }, [currentUser]);
   
-  const deleteUser = useCallback((userId: string) => {
-    setUsers(prev => {
-        const userToDelete = prev.find(user => user.id === userId);
-        if (!userToDelete) return prev;
-
-        if (userToDelete.role === 'admin') {
-            toast({ title: "Action Forbidden", description: "Admin users cannot be deleted.", variant: "destructive" });
-            return prev;
-        }
-
-        const newUsers = prev.filter(user => user.id !== userId);
-
-        if (currentUser?.id === userId) {
-            setCurrentUser(null);
-        }
+  const deleteUser = useCallback(async (userId: string) => {
+    const userToDelete = users.find(u => u.id === userId);
+    if (!userToDelete) return;
+    if (userToDelete.role === 'admin') {
+        toast({ title: "Action Forbidden", description: "Admin users cannot be deleted.", variant: "destructive" });
+        return;
+    }
+    try {
+        const userDocRef = doc(db, 'users', userId);
+        await deleteDoc(userDocRef);
         toast({ title: "User Deleted", description: `User ${userToDelete.name} has been removed.`});
-        return newUsers;
-    });
-  }, [currentUser?.id, toast]);
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        toast({ title: "Error", description: "Failed to delete user.", variant: "destructive" });
+    }
+  }, [users, toast]);
   
-  const editUser = useCallback((userId: string, name: string, employeeId: string) => {
-     setUsers(prev => {
-        const newUsers = prev.map(user => {
-            if (user.id === userId) {
-                const updatedUser = { ...user, name, employeeId, lastUpdated: Date.now() };
-                if (currentUser?.id === userId) {
-                    setCurrentUser(updatedUser);
-                }
-                toast({ title: "User Updated", description: "User details have been changed." });
-                return updatedUser;
-            }
-            return user;
+  const editUser = useCallback(async (userId: string, name: string, employeeId: string) => {
+    try {
+        const userDocRef = doc(db, 'users', userId);
+        await updateDoc(userDocRef, {
+            name,
+            employeeId,
+            lastUpdated: Date.now(),
         });
-        return newUsers;
-     });
-  }, [currentUser?.id, toast]);
+        toast({ title: "User Updated", description: "User details have been changed." });
+    } catch (error) {
+        console.error("Error editing user:", error);
+        toast({ title: "Error", description: "Failed to update user details.", variant: "destructive" });
+    }
+  }, [toast]);
 
-  const allTransactions = users.flatMap(u => u.transactions);
+  // Aggregate transactions for admin view
+  const allTransactions = users.flatMap(u => 
+      u.transactions.map(t => ({...t, userName: u.name}))
+  ).sort((a,b) => b.timestamp - a.timestamp);
 
 
   return { 
@@ -358,7 +361,7 @@ export function useCanteenPassState() {
     users,
     currentUser,
     balance: currentUser?.balance ?? 0,
-    transactions: currentUser?.role === 'admin' ? allTransactions.sort((a,b) => b.timestamp - a.timestamp) : (currentUser?.transactions ?? []),
+    transactions: currentUser?.role === 'admin' ? allTransactions : (currentUser?.transactions ?? []),
     addUser,
     addTokens, 
     addTokensToUser,
@@ -380,7 +383,6 @@ export function CanteenPassProvider({ children }: { children: ReactNode }) {
     </CanteenPassContext.Provider>
   );
 }
-
 
 export function useCanteenPass() {
   const context = useContext(CanteenPassContext);

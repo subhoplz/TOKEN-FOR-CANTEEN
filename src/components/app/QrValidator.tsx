@@ -32,6 +32,7 @@ export default function QrValidator() {
     const [signatureValid, setSignatureValid] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [isScanning, setIsScanning] = useState(true);
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const { users, spendTokensFromUser } = useCanteenPass();
     const { toast } = useToast();
@@ -92,9 +93,10 @@ export default function QrValidator() {
                 throw new Error("Missing required field in QR data.");
             }
 
+            // Find the most up-to-date user data from the context
             const userInDb = users.find(u => u.employeeId === parsed.employee_id);
             if (!userInDb) {
-                 setError("User not found. The vendor app may need to sync.");
+                 setError("User not found in the local database. The vendor app may need to be online to sync.");
                  setSignatureValid(false);
                  setScannedUser(null);
                  return;
@@ -140,7 +142,8 @@ export default function QrValidator() {
     }, [isScanning, handleValidate]);
 
     const startCamera = useCallback(async () => {
-        if (streamRef.current) return; // Already running
+        if (streamRef.current || hasCameraPermission === false) return; // Already running or permission denied
+        setHasCameraPermission(null); // Show loading state
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -159,7 +162,7 @@ export default function QrValidator() {
                 description: 'Please enable camera permissions in your browser settings to use this app.',
             });
         }
-    }, [toast]);
+    }, [toast, hasCameraPermission]);
       
     useEffect(() => {
         startCamera();
@@ -179,38 +182,30 @@ export default function QrValidator() {
         }
     }, [isScanning, hasCameraPermission, tick]);
 
-    const handleDeduct = () => {
+    const handleDeduct = async () => {
         if (!scannedUser || !validatedData) return;
+        setIsProcessing(true);
 
-        // Re-fetch the user from the main context to ensure we have the latest balance
-        const freshUser = users.find(u => u.id === scannedUser.id);
-        if (!freshUser) {
-            toast({
-                title: "Error",
-                description: "Scanned user could not be found.",
-                variant: 'destructive'
-            });
-            return;
-        }
+        const mealCost = 1; // Or get from validatedData if transaction is included
+        const mealDescription = validatedData.transaction?.description || "Meal served";
 
-        const mealCost = 1;
-        const mealDescription = "Meal served";
-
-        if (freshUser.balance < mealCost) {
+        // IMPORTANT: Check balance from the live user state (scannedUser), not the QR data.
+        if (scannedUser.balance < mealCost) {
             toast({
                 title: "Insufficient Balance",
-                description: `${freshUser.name} does not have enough tokens.`,
+                description: `${scannedUser.name} has only ${scannedUser.balance} tokens.`,
                 variant: 'destructive'
             });
+            setIsProcessing(false);
             return;
         }
 
-        const result = spendTokensFromUser(freshUser.id, mealCost, mealDescription);
+        const result = await spendTokensFromUser(scannedUser.id, mealCost, mealDescription);
         
         if (result.success) {
             toast({
                 title: "Success",
-                description: `${mealCost} token deducted from ${freshUser.name}.`,
+                description: `${mealCost} token deducted from ${scannedUser.name}. New balance: ${scannedUser.balance - mealCost}`,
             });
             handleReset();
         } else {
@@ -220,6 +215,7 @@ export default function QrValidator() {
                 variant: 'destructive'
             });
         }
+        setIsProcessing(false);
     }
     
     const handleReset = () => {
@@ -279,8 +275,8 @@ export default function QrValidator() {
                                                 <span className='text-muted-foreground'>Tokens</span>
                                             </div>
                                             <div>
-                                                <p className='text-sm font-semibold'>Meal Available:</p>
-                                                <p className='text-muted-foreground'>Breakfast / Lunch / Dinner</p>
+                                                <p className='text-sm font-semibold'>Meal Cost:</p>
+                                                <p className='text-muted-foreground'>1 Token</p>
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -307,10 +303,11 @@ export default function QrValidator() {
             <CardFooter className='flex flex-col gap-2 pt-4'>
                 {scannedUser && validatedData && signatureValid ? (
                     <>
-                        <Button className="w-full h-12 text-lg" onClick={handleDeduct} disabled={scannedUser.balance < 1}>
-                           {scannedUser.balance < 1 ? 'Insufficient Balance' : <><Utensils className='mr-2' /> Deduct 1 Token & Serve</>}
+                        <Button className="w-full h-12 text-lg" onClick={handleDeduct} disabled={scannedUser.balance < 1 || isProcessing}>
+                           {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Utensils className='mr-2' />}
+                           {isProcessing ? 'Processing...' : scannedUser.balance < 1 ? 'Insufficient Balance' : 'Deduct 1 Token & Serve'}
                         </Button>
-                        <Button onClick={handleReset} variant="outline" className="w-full">Cancel & Scan Next</Button>
+                        <Button onClick={handleReset} variant="outline" className="w-full" disabled={isProcessing}>Cancel & Scan Next</Button>
                     </>
                 ) : (
                      <Button onClick={handleReset} variant="outline" className='w-full' disabled={isScanning}>
@@ -321,4 +318,3 @@ export default function QrValidator() {
         </Card>
     );
 }
-
