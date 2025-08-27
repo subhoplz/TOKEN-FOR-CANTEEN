@@ -83,7 +83,7 @@ export function useCanteenPassState() {
                 await batch.commit();
             }
         } catch (e) {
-            console.error("Could not connect to firestore to seed DB. This can happen when offline.", e);
+            console.error("Could not connect to Firestore to seed the database. This is expected if the database hasn't been created in the Firebase console yet. Please create a Firestore database.", e);
         }
     };
     seedDatabase();
@@ -447,5 +447,3 @@ export function useCanteenPass() {
   }
   return context;
 }
-
-    
