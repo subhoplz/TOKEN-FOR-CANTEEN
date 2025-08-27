@@ -70,16 +70,20 @@ export function useCanteenPassState() {
   // Seed database if it's empty
   useEffect(() => {
     const seedDatabase = async () => {
-        const usersCollection = collection(db, 'users');
-        const snapshot = await getDocs(usersCollection);
-        if (snapshot.empty) {
-            console.log("Seeding database with initial users...");
-            const batch = writeBatch(db);
-            initialUsers.forEach(userData => {
-                const docRef = doc(usersCollection);
-                batch.set(docRef, userData);
-            });
-            await batch.commit();
+        try {
+            const usersCollection = collection(db, 'users');
+            const snapshot = await getDocs(usersCollection);
+            if (snapshot.empty) {
+                console.log("Seeding database with initial users...");
+                const batch = writeBatch(db);
+                initialUsers.forEach(userData => {
+                    const docRef = doc(usersCollection);
+                    batch.set(docRef, userData);
+                });
+                await batch.commit();
+            }
+        } catch (e) {
+            console.error("Could not connect to firestore to seed DB. This can happen when offline.", e);
         }
     };
     seedDatabase();
@@ -92,6 +96,7 @@ export function useCanteenPassState() {
     const unsubscribe = onSnapshot(usersCollection, (snapshot) => {
         const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
         setUsers(usersData);
+        localStorage.setItem('canteen-users', JSON.stringify(usersData)); // Cache for offline use
 
         // Update current user with fresh data
         if (currentUser) {
@@ -100,7 +105,6 @@ export function useCanteenPassState() {
                 setCurrentUser(updatedCurrentUser);
                 localStorage.setItem('canteen-current-user-id', JSON.stringify(updatedCurrentUser.id));
             } else {
-                // The current user was deleted
                 setCurrentUser(null);
                 localStorage.removeItem('canteen-current-user-id');
             }
@@ -108,7 +112,11 @@ export function useCanteenPassState() {
         setLoading(false);
     }, (error) => {
         console.error("Firestore snapshot error:", error);
-        toast({ title: "Error", description: "Could not fetch data from the database.", variant: "destructive" });
+        toast({ title: "Offline Mode", description: "Could not connect to the database. Using local data.", variant: "destructive" });
+        const localUsers = localStorage.getItem('canteen-users');
+        if (localUsers) {
+            setUsers(JSON.parse(localUsers));
+        }
         setLoading(false);
     });
 
@@ -120,10 +128,24 @@ export function useCanteenPassState() {
         getDoc(userDocRef).then(docSnap => {
             if (docSnap.exists()) {
                 setCurrentUser({ id: docSnap.id, ...docSnap.data() } as User);
+            } else {
+                // Fallback to local storage if user not found in DB (e.g. offline)
+                const localUsers = localStorage.getItem('canteen-users');
+                if (localUsers) {
+                    const users = JSON.parse(localUsers) as User[];
+                    const localUser = users.find(u => u.id === userId);
+                    if (localUser) setCurrentUser(localUser);
+                }
             }
+        }).catch(() => {
+            const localUsers = localStorage.getItem('canteen-users');
+                if (localUsers) {
+                    const users = JSON.parse(localUsers) as User[];
+                    const localUser = users.find(u => u.id === JSON.parse(storedCurrentUserId));
+                    if (localUser) setCurrentUser(localUser);
+                }
         });
     }
-
 
     return () => unsubscribe();
   }, [toast, currentUser?.id]);
@@ -147,7 +169,7 @@ export function useCanteenPassState() {
         });
     } catch (error) {
         console.error("Error adding user:", error);
-        toast({ title: "Error", description: "Failed to add user.", variant: "destructive" });
+        toast({ title: "Error", description: "Failed to add user. Check your connection.", variant: "destructive" });
     }
   }, [toast]);
 
@@ -195,7 +217,7 @@ export function useCanteenPassState() {
         toast({ title: "Success", description: `${amount} tokens added to your account.` });
     } catch (error) {
         console.error("Error adding tokens:", error);
-        toast({ title: "Error", description: "Failed to add tokens.", variant: "destructive" });
+        toast({ title: "Error", description: "Failed to add tokens. Check your connection.", variant: "destructive" });
     }
   }, [currentUser, toast]);
 
@@ -246,10 +268,14 @@ export function useCanteenPassState() {
         const newBalance = currentUser.balance - amount;
         const newLastUpdated = Date.now();
         
-        await updateDoc(userDocRef, {
+        // This will attempt to write to Firestore, but doesn't block the UI
+        updateDoc(userDocRef, {
             balance: newBalance,
             transactions: [newTransaction, ...currentUser.transactions],
             lastUpdated: newLastUpdated,
+        }).catch(err => {
+            console.warn("Could not sync transaction to Firestore, will rely on QR.", err);
+            toast({ title: "Offline Transaction", description: "Your transaction will be synced later."})
         });
 
         const qrPayload = {
@@ -269,12 +295,26 @@ export function useCanteenPassState() {
             }
         };
 
+        // Also update local state immediately for responsiveness
+        const updatedCurrentUser = {
+            ...currentUser,
+            balance: newBalance,
+            transactions: [newTransaction, ...currentUser.transactions],
+            lastUpdated: newLastUpdated
+        }
+        setCurrentUser(updatedCurrentUser);
+        const updatedUsers = users.map(u => u.id === currentUser.id ? updatedCurrentUser : u);
+        setUsers(updatedUsers);
+        localStorage.setItem('canteen-users', JSON.stringify(updatedUsers));
+        localStorage.setItem('canteen-current-user-id', JSON.stringify(currentUser.id));
+
+
         return { success: true, data: JSON.stringify(qrData, null, 2) };
     } catch (error) {
         console.error("Error spending tokens:", error);
         return { success: false, data: "Failed to process transaction." };
     }
-  }, [currentUser]);
+  }, [currentUser, users, toast]);
 
   const spendTokensFromUser = useCallback(async (userId: string, amount: number, description: string) => {
     const userToUpdate = users.find(u => u.id === userId);
@@ -300,9 +340,25 @@ export function useCanteenPassState() {
         return { success: true, data: "Transaction successful" };
     } catch (error) {
         console.error("Error spending tokens from user:", error);
-        return { success: false, data: "Failed to process transaction." };
+        toast({ title: "Sync Failed", description: "Could not sync transaction to the database. It is saved locally.", variant: "destructive" });
+        
+        // --- OFFLINE FALLBACK for Vendor ---
+        // Even if firestore fails, update the local state to reflect the deduction.
+        // This is critical for the vendor's local database to be consistent.
+        const newBalance = userToUpdate.balance - amount;
+        const updatedUser = {
+            ...userToUpdate,
+            balance: newBalance,
+            transactions: [newTransaction, ...userToUpdate.transactions],
+            lastUpdated: Date.now()
+        }
+        const updatedUsers = users.map(u => u.id === userId ? updatedUser : u);
+        setUsers(updatedUsers);
+        localStorage.setItem('canteen-users', JSON.stringify(updatedUsers));
+
+        return { success: true, data: "Transaction saved locally" };
     }
-  }, [users]);
+  }, [users, toast]);
 
   const getSpendingHabits = useCallback(() => {
     const transactions = currentUser?.transactions || [];
@@ -352,7 +408,7 @@ export function useCanteenPassState() {
 
   // Aggregate transactions for admin view
   const allTransactions = users.flatMap(u => 
-      u.transactions.map(t => ({...t, userName: u.name}))
+      (u.transactions || []).map(t => ({...t, userName: u.name}))
   ).sort((a,b) => b.timestamp - a.timestamp);
 
 
@@ -391,3 +447,5 @@ export function useCanteenPass() {
   }
   return context;
 }
+
+    
