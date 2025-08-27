@@ -8,17 +8,48 @@ import { useRouter } from 'next/navigation';
 import BalanceCard from '@/components/app/BalanceCard';
 import MenuCard from '@/components/app/MenuCard';
 import { Button } from '@/components/ui/button';
-import { LogOut, UserSquare } from 'lucide-react';
+import { Download, LogOut, UserSquare } from 'lucide-react';
 import MyQrCodeDialog from '@/components/app/MyQrCodeDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import UserLayout from '@/components/app/UserLayout';
+
+interface BeforeInstallPromptEvent extends Event {
+    readonly platforms: string[];
+    readonly userChoice: Promise<{
+        outcome: 'accepted' | 'dismissed',
+        platform: string,
+    }>;
+    prompt(): Promise<void>;
+}
 
 export default function DashboardPage() {
   const { loading, currentUser, logout } = useCanteenPass();
   const router = useRouter();
 
   const [myQrOpen, setMyQrOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+        e.preventDefault();
+        setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      installPrompt.userChoice.then(() => {
+          setInstallPrompt(null);
+      });
+  };
 
   useEffect(() => {
     if (!loading && !currentUser) {
@@ -81,6 +112,17 @@ export default function DashboardPage() {
             </Card>
 
             <BalanceCard />
+
+            {installPrompt && (
+              <Card>
+                <CardContent className="p-4">
+                  <Button className="w-full h-12" onClick={handleInstallClick}>
+                      <Download className="mr-2 h-5 w-5" />
+                      Install App to your Phone
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
             <MenuCard />
             
