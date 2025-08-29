@@ -296,7 +296,7 @@ export default function QrValidator() {
                                                 <p className='text-sm font-semibold'>Meal Cost:</p>
                                                 <p className='text-muted-foreground'>1 Token</p>
                                             </div>
-                                        </Cacontent>
+                                        </CardContent>
                                     </Card>
                                 </>
                             )}
@@ -322,5 +322,3 @@ export default function QrValidator() {
         </Card>
     );
 }
-
-    
