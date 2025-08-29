@@ -32,7 +32,6 @@ export default function QrValidator() {
     const [error, setError] = useState<string | null>(null);
     const [signatureValid, setSignatureValid] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-    const [isScanning, setIsScanning] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
 
     const { users, spendTokensFromUser } = useCanteenPass();
@@ -42,6 +41,7 @@ export default function QrValidator() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const animationFrameIdRef = useRef<number | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
 
     const validateSignature = (data: QrCodeData) => {
         const dataString = `${data.employee_id}|${data.timestamp}|CanteenPass-Secret-Key`;
@@ -55,19 +55,8 @@ export default function QrValidator() {
         const expectedSignature = `sig-${hash}`;
         return data.device_signature === expectedSignature;
     };
-    
-    const stopCamera = useCallback(() => {
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-      }
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-        videoRef.current.srcObject = null;
-      }
-    }, []);
 
-    const handleValidate = useCallback((qrInput: string) => {
+    const handleValidationResult = useCallback((qrInput: string) => {
         setIsProcessing(true);
         setError(null);
         setValidatedData(null);
@@ -113,17 +102,23 @@ export default function QrValidator() {
         }
     }, [users]);
     
-    useEffect(() => {
-        if (scannedCode) {
-            stopCamera();
-            setIsScanning(false);
-            handleValidate(scannedCode);
+    
+    const stopScanning = useCallback(() => {
+        if (animationFrameIdRef.current) {
+            cancelAnimationFrame(animationFrameIdRef.current);
+            animationFrameIdRef.current = null;
         }
-    }, [scannedCode, stopCamera, handleValidate]);
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+    }, []);
 
     const tick = useCallback(() => {
-        if (!videoRef.current || !canvasRef.current) {
-            animationFrameIdRef.current = requestAnimationFrame(tick);
+        if (!videoRef.current || !canvasRef.current || !streamRef.current) {
             return;
         };
 
@@ -143,27 +138,32 @@ export default function QrValidator() {
 
                 if (code && code.data) {
                     setScannedCode(code.data);
-                    return; // Stop the loop
+                    stopScanning();
+                    handleValidationResult(code.data);
+                    return; 
                 }
             }
         }
         animationFrameIdRef.current = requestAnimationFrame(tick);
-    }, []);
+    }, [stopScanning, handleValidationResult]);
 
-    const startCamera = useCallback(async () => {
+
+    const startScanning = useCallback(async () => {
+        if (streamRef.current) return; // Camera is already running
+
         setHasCameraPermission(null);
         setError(null);
-
+        setScannedCode(null);
+        setValidatedData(null);
+        setScannedUser(null);
+        
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            streamRef.current = stream;
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
-                // Muted is important for autoplay to work on all browsers
-                videoRef.current.muted = true; 
-                videoRef.current.play().catch(e => console.error("Video play failed", e));
             }
             setHasCameraPermission(true);
-            setIsScanning(true);
             animationFrameIdRef.current = requestAnimationFrame(tick);
         } catch (error) {
             console.error('Error accessing camera:', error);
@@ -173,11 +173,11 @@ export default function QrValidator() {
     }, [tick]);
       
     useEffect(() => {
-        startCamera();
+        startScanning();
         return () => {
-            stopCamera();
+            stopScanning();
         };
-    }, [startCamera, stopCamera]);
+    }, [startScanning, stopScanning]);
 
     const handleDeduct = async () => {
         if (!scannedUser || !validatedData) return;
@@ -215,18 +215,12 @@ export default function QrValidator() {
     }
     
     const handleReset = () => {
-        setScannedCode(null);
-        setValidatedData(null);
-        setScannedUser(null);
-        setError(null);
-        setSignatureValid(false);
         setIsProcessing(false);
-        startCamera();
+        startScanning();
     }
 
-    const showScanner = isScanning && hasCameraPermission;
-    const showResults = !isScanning && validatedData && scannedUser;
-    const showError = error;
+    const isScanning = hasCameraPermission && !scannedCode;
+    const showResults = validatedData && scannedUser;
     const showPermissionDenied = hasCameraPermission === false;
     const showLoading = hasCameraPermission === null;
 
@@ -257,15 +251,11 @@ export default function QrValidator() {
                         </div>
                     )}
 
-                    {showScanner && (
-                        <>
-                            <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
-                            <canvas ref={canvasRef} style={{ display: 'none' }} />
-                            <div className="absolute inset-0 border-[8px] border-primary/50 rounded-lg" />
-                        </>
-                    )}
+                    <video ref={videoRef} className={cn("w-full h-full object-cover", { 'hidden': !isScanning })} autoPlay playsInline muted />
+                    <canvas ref={canvasRef} style={{ display: 'none' }} />
+                    {isScanning && <div className="absolute inset-0 border-[8px] border-primary/50 rounded-lg" />}
 
-                    {(showResults || showError) && !showScanner && (
+                    {(showResults || error) && !isScanning && (
                         <div className='space-y-4 p-4'>
                              {error && (
                                 <Alert variant="destructive">
