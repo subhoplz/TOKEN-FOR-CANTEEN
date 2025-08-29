@@ -14,7 +14,7 @@ export default function VendorDashboardPage() {
     const router = useRouter();
 
      useEffect(() => {
-        if (!loading && (!currentUser || currentUser.role !== 'admin')) {
+        if (!loading && (!currentUser || !['admin', 'vendor'].includes(currentUser.role))) {
              router.push('/login/vendor');
         }
     }, [loading, currentUser, router]);

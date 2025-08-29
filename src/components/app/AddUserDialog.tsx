@@ -40,13 +40,13 @@ export default function AddUserDialog({ open, onOpenChange, role = 'user' }: Add
     }
     if (!employeeId.trim()) {
         toast({
-            title: 'Invalid Employee ID',
-            description: 'Please enter an employee ID.',
+            title: 'Invalid ID',
+            description: 'Please enter an ID.',
             variant: 'destructive',
         });
         return;
     }
-    if (!password.trim()) {
+    if (!password.trim() && role === 'user') {
         toast({
             title: 'Password required',
             description: 'Please enter a password for the new user.',
@@ -62,18 +62,35 @@ export default function AddUserDialog({ open, onOpenChange, role = 'user' }: Add
     onOpenChange(false);
   };
   
-  const title = role === 'admin' ? 'Add New Admin' : 'Create Account';
-  const description = role === 'admin' 
-    ? "Create a new admin account. Admins can manage users and vendors."
-    : "Create a new user account. They will start with a balance of 0 tokens.";
+  const getTitle = () => {
+    switch (role) {
+      case 'admin':
+        return 'Add New Admin';
+      case 'vendor':
+        return 'Add New Vendor';
+      default:
+        return 'Create Account';
+    }
+  }
+
+  const getDescription = () => {
+    switch (role) {
+      case 'admin':
+        return "Create a new admin account. Admins can manage users and vendors.";
+      case 'vendor':
+        return "Create a new vendor account. Vendors can scan QR codes to process payments.";
+      default:
+        return "Create a new user account. They will start with a balance of 0 tokens.";
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>{getTitle()}</DialogTitle>
           <DialogDescription>
-            {description}
+            {getDescription()}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -91,29 +108,31 @@ export default function AddUserDialog({ open, onOpenChange, role = 'user' }: Add
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="employeeId" className="text-right">
-              Employee ID
+              {role === 'vendor' ? 'Vendor ID' : 'Employee ID'}
             </Label>
             <Input
               id="employeeId"
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
               className="col-span-3"
-              placeholder={role === 'admin' ? "e.g., A00001" : "e.g., E12345"}
+              placeholder={role === 'admin' ? "e.g., A00001" : role === 'vendor' ? "e.g., V123" : "e.g., E12345"}
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="password" className="text-right">
-              Password
-            </Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="col-span-3"
-              placeholder="Create a password"
-            />
-          </div>
+          {role !== 'vendor' && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="password" className="text-right">
+                Password
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="col-span-3"
+                placeholder="Create a password"
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button type="submit" onClick={handleSubmit}>Create {role.charAt(0).toUpperCase() + role.slice(1)}</Button>

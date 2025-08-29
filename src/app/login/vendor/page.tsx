@@ -29,7 +29,7 @@ export default function VendorLoginPage() {
         return <p>Loading...</p>
     }
 
-    const vendorUsers = users.filter(u => u.role === 'admin'); // For now, admins are vendors
+    const vendorUsers = users.filter(u => u.role === 'vendor');
 
     return (
         <>
@@ -71,7 +71,7 @@ export default function VendorLoginPage() {
                     </CardFooter>
                 </Card>
             </div>
-            <AddUserDialog open={addVendorOpen} onOpenChange={setAddVendorOpen} role="admin" />
+            <AddUserDialog open={addVendorOpen} onOpenChange={setAddVendorOpen} role="vendor" />
         </>
     );
 }

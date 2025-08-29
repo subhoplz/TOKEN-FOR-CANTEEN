@@ -19,13 +19,13 @@ export default function BalanceCard() {
           <Ticket className="h-5 w-5 text-primary-foreground/80" />
         </CardTitle>
       </CardHeader>
-      <CardContent className='space-y-4'>
-        <div className="text-5xl font-bold font-headline text-center pb-2">
+      <CardContent className='space-y-4 text-center'>
+        <div className="text-5xl font-bold font-headline pb-2">
           {balance.toLocaleString()}
         </div>
         <Progress value={(balance / maxTokens) * 100} className="h-3 bg-primary-foreground/30" />
-        <p className="text-xs text-primary-foreground/80 pt-2 text-center">
-          Last updated: {currentUser ? format(new Date(currentUser.lastUpdated), 'PPp') : 'N/A'}
+        <p className="text-xs text-primary-foreground/80 pt-2 font-medium">
+          {currentUser ? `Last updated: ${format(new Date(currentUser.lastUpdated), 'PPp')}` : '...'}
         </p>
       </CardContent>
     </Card>

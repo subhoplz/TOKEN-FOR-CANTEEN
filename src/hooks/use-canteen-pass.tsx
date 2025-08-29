@@ -26,7 +26,7 @@ interface CanteenPassContextType {
   currentUser: User | null;
   balance: number;
   transactions: Transaction[];
-  addUser: (name: string, employeeId: string, role?: 'user' | 'admin', password?: string) => void;
+  addUser: (name: string, employeeId: string, role?: User['role'], password?: string) => void;
   addTokens: (amount: number) => void;
   addTokensToUser: (userId: string, amount: number) => void;
   spendTokens: (amount: number, description: string) => Promise<{ success: boolean; data: string | null }>;
@@ -45,7 +45,7 @@ const initialUsers: Omit<User, 'id'>[] = [
     { employeeId: 'E12345', name: 'Alex Doe', password: 'password', balance: 100, transactions: [], role: 'user', lastUpdated: Date.now() },
     { employeeId: 'E67890', name: 'Jane Doe', password: 'password', balance: 250, transactions: [], role: 'user', lastUpdated: Date.now() },
     { employeeId: 'A00001', name: 'Main Admin', password: 'password', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
-    { employeeId: 'A00002', name: 'Canteen Admin', password: 'password', balance: 0, transactions: [], role: 'admin', lastUpdated: Date.now() },
+    { employeeId: 'V00001', name: 'Canteen Vendor', password: 'password', balance: 0, transactions: [], role: 'vendor', lastUpdated: Date.now() },
 ];
 
 
@@ -151,14 +151,14 @@ export function useCanteenPassState() {
   }, [toast, currentUser?.id]);
 
 
-  const addUser = useCallback(async (name: string, employeeId: string, role: 'user' | 'admin' = 'user', password?: string) => {
+  const addUser = useCallback(async (name: string, employeeId: string, role: User['role'] = 'user', password?: string) => {
     try {
         const usersCollection = collection(db, 'users');
         await addDoc(usersCollection, {
             employeeId,
             name,
             password: password || 'password', // Default password for simplicity
-            balance: role === 'admin' ? 0 : 0,
+            balance: (role === 'admin' || role === 'vendor') ? 0 : 0,
             transactions: [],
             role: role,
             lastUpdated: Date.now()
@@ -176,7 +176,7 @@ export function useCanteenPassState() {
   const switchUser = useCallback((userId: string, password?: string) => {
     const userToSwitch = users.find(u => u.id === userId);
     if(userToSwitch) {
-      if (userToSwitch.role !== 'admin' && userToSwitch.password && userToSwitch.password !== password) {
+      if (userToSwitch.role === 'user' && userToSwitch.password && userToSwitch.password !== password) {
           toast({ title: "Login Failed", description: "The password you entered is incorrect.", variant: "destructive" });
           return;
       }

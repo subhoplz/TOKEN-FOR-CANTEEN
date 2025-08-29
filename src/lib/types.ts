@@ -13,6 +13,6 @@ export interface User {
   password?: string; // Added for login
   balance: number;
   transactions: Transaction[];
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'vendor';
   lastUpdated: number;
 }
