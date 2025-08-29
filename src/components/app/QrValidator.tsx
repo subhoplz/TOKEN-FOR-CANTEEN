@@ -119,6 +119,7 @@ export default function QrValidator() {
 
     const tick = useCallback(() => {
         if (!videoRef.current || !canvasRef.current || !streamRef.current) {
+            animationFrameIdRef.current = requestAnimationFrame(tick);
             return;
         };
 
@@ -203,7 +204,7 @@ export default function QrValidator() {
                 title: "Success",
                 description: `${mealCost} token deducted from ${scannedUser.name}. New balance: ${scannedUser.balance - mealCost}`,
             });
-            handleReset();
+            router.push('/vendor/dashboard');
         } else {
              toast({
                 title: "Failed",
@@ -295,7 +296,7 @@ export default function QrValidator() {
                                                 <p className='text-sm font-semibold'>Meal Cost:</p>
                                                 <p className='text-muted-foreground'>1 Token</p>
                                             </div>
-                                        </CardContent>
+                                        </Cacontent>
                                     </Card>
                                 </>
                             )}
