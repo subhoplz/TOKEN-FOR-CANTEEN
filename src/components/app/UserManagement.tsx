@@ -123,7 +123,10 @@ export default function UserManagement() {
                                     <Plus className='mr-2 h-4 w-4' />
                                     Add Tokens
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => { setUserToEdit(user); setEditedName(user.name); setEditedEmployeeId(user.employeeId); }}>
+                                <DropdownMenuItem 
+                                    onClick={() => { setUserToEdit(user); setEditedName(user.name); setEditedEmployeeId(user.employeeId); }}
+                                    disabled={user.role === 'admin'}
+                                >
                                     <Edit className='mr-2 h-4 w-4' />
                                     Edit
                                 </DropdownMenuItem>

@@ -401,6 +401,11 @@ export function useCanteenPassState() {
   }, [users, toast]);
   
   const editUser = useCallback(async (userId: string, name: string, employeeId: string) => {
+    const userToEdit = users.find(u => u.id === userId);
+    if (userToEdit && userToEdit.role === 'admin') {
+        toast({ title: "Action Forbidden", description: "Admin users cannot be edited.", variant: "destructive" });
+        return;
+    }
     try {
         const userDocRef = doc(db, 'users', userId);
         await updateDoc(userDocRef, {
@@ -413,7 +418,7 @@ export function useCanteenPassState() {
         console.error("Error editing user:", error);
         toast({ title: "Error", description: "Failed to update user details.", variant: "destructive" });
     }
-  }, [toast]);
+  }, [users, toast]);
 
   // Aggregate transactions for admin view
   const allTransactions = users.flatMap(u => 
