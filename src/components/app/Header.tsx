@@ -3,15 +3,17 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { LogOut, UtensilsCrossed, Shield, User as UserIcon, Settings, Bell, UserCog } from 'lucide-react';
+import { LogOut, UtensilsCrossed, Shield, User as UserIcon, Settings, Bell, UserCog, WifiOff } from 'lucide-react';
 import { useCanteenPass } from '@/hooks/use-canteen-pass';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 
 export default function Header() {
   const { currentUser, logout } = useCanteenPass();
   const router = useRouter();
+  const isOnline = useOnlineStatus();
 
   const handleLogout = () => {
     logout();
@@ -35,6 +37,11 @@ export default function Header() {
             <span className="font-headline">SmartCanteen</span>
           </Link>
           <nav className='flex items-center gap-2'>
+            {!isOnline && (
+                <div className='flex items-center gap-2 text-muted-foreground' title="You are currently offline">
+                    <WifiOff className="h-5 w-5" />
+                </div>
+            )}
             {currentUser ? (
               <>
                 <Button variant="ghost" size="icon" className='relative'>

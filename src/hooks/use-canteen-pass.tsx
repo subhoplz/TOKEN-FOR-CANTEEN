@@ -113,7 +113,10 @@ export function useCanteenPassState() {
         setLoading(false);
     }, (error) => {
         console.warn("Firestore snapshot error:", error);
-        toast({ title: "Offline Mode", description: "Could not connect to the database. Using local data.", variant: "destructive" });
+        toast({ 
+            title: "You are offline", 
+            description: "The application is running on locally saved data. Some features may be limited.",
+        });
         const localUsers = localStorage.getItem('canteen-users');
         if (localUsers) {
             setUsers(JSON.parse(localUsers));
