@@ -48,6 +48,7 @@ export default function MyQrCodeDialog({ open, onOpenChange }: MyQrCodeDialogPro
 
       const fullQrData = {
         ...qrPayload,
+        name: currentUser.name,
         device_signature: signature
       }
       

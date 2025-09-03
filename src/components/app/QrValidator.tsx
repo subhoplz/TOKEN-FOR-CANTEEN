@@ -62,45 +62,65 @@ export default function QrValidator() {
         setValidatedData(null);
         setScannedUser(null);
         setSignatureValid(false);
-
+    
         if (!qrInput.trim()) {
             setError("QR data is empty.");
             setIsProcessing(false);
             return;
         }
-
+    
         try {
             const parsed = JSON.parse(qrInput) as QrCodeData;
-            
             const requiredFields: (keyof QrCodeData)[] = ['employee_id', 'timestamp', 'device_signature'];
+    
             if (requiredFields.some(field => !(field in parsed))) {
                 throw new Error("Missing required field in QR data.");
             }
-
-            const userInDb = users.find(u => u.employeeId === parsed.employee_id);
-            if (!userInDb) {
-                 setError("User not found in the local database. The vendor app may need to be online to sync.");
-                 setSignatureValid(false);
-                 setScannedUser(null);
-                 setIsProcessing(false);
-                 return;
-            }
-
-            setScannedUser(userInDb);
-            const displayData = { ...parsed, name: parsed.name || userInDb.name };
-            setValidatedData(displayData);
-            
+    
             const isValid = validateSignature(parsed);
             setSignatureValid(isValid);
+            setValidatedData(parsed); // Set validated data regardless of signature to show info
+    
             if (!isValid) {
                 setError("Digital signature is invalid! Data may have been tampered with.");
+                setScannedUser(null);
+                setIsProcessing(false);
+                return;
             }
+    
+            // If signature is valid, find the user in the local DB.
+            // This is still useful for getting the most up-to-date balance.
+            const userInDb = users.find(u => u.employeeId === parsed.employee_id);
+    
+            if (!userInDb) {
+                // If user not in DB (e.g., vendor offline for a long time),
+                // we can still proceed but with a warning, relying on QR data alone.
+                toast({
+                    title: "User not in local records",
+                    description: "Proceeding based on QR data. Sync app when online.",
+                    variant: "default"
+                });
+                // Create a temporary user object from QR data
+                const tempUser: User = {
+                    id: parsed.employee_id, // Use employeeId as a temporary ID
+                    employeeId: parsed.employee_id,
+                    name: parsed.name || 'Unknown User',
+                    balance: parsed.balance || 0, // This might be stale, but it's what we have
+                    transactions: [],
+                    role: 'user',
+                    lastUpdated: new Date(parsed.timestamp).getTime()
+                };
+                setScannedUser(tempUser);
+            } else {
+                setScannedUser(userInDb);
+            }
+    
         } catch (e) {
             setError("Invalid QR code. Scanned data is not valid JSON.");
         } finally {
             setIsProcessing(false);
         }
-    }, [users]);
+    }, [users, toast]);
     
     
     const stopScanning = useCallback(() => {
