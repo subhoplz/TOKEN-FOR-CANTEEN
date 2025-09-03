@@ -105,13 +105,14 @@ export function useCanteenPassState() {
                 setCurrentUser(updatedCurrentUser);
                 localStorage.setItem('canteen-current-user-id', JSON.stringify(updatedCurrentUser.id));
             } else {
+                // User was deleted, log them out
                 setCurrentUser(null);
                 localStorage.removeItem('canteen-current-user-id');
             }
         }
         setLoading(false);
     }, (error) => {
-        console.error("Firestore snapshot error:", error);
+        console.warn("Firestore snapshot error:", error);
         toast({ title: "Offline Mode", description: "Could not connect to the database. Using local data.", variant: "destructive" });
         const localUsers = localStorage.getItem('canteen-users');
         if (localUsers) {
@@ -124,31 +125,29 @@ export function useCanteenPassState() {
     const storedCurrentUserId = localStorage.getItem('canteen-current-user-id');
     if (storedCurrentUserId) {
         const userId = JSON.parse(storedCurrentUserId);
-        const userDocRef = doc(db, 'users', userId);
-        getDoc(userDocRef).then(docSnap => {
-            if (docSnap.exists()) {
-                setCurrentUser({ id: docSnap.id, ...docSnap.data() } as User);
-            } else {
-                // Fallback to local storage if user not found in DB (e.g. offline)
-                const localUsers = localStorage.getItem('canteen-users');
-                if (localUsers) {
-                    const users = JSON.parse(localUsers) as User[];
-                    const localUser = users.find(u => u.id === userId);
-                    if (localUser) setCurrentUser(localUser);
-                }
+        // Try getting from local storage first for faster offline load
+        const localUsers = localStorage.getItem('canteen-users');
+        if (localUsers) {
+            const users = JSON.parse(localUsers) as User[];
+            const localUser = users.find(u => u.id === userId);
+            if (localUser) {
+                setCurrentUser(localUser);
             }
-        }).catch(() => {
-            const localUsers = localStorage.getItem('canteen-users');
-                if (localUsers) {
-                    const users = JSON.parse(localUsers) as User[];
-                    const localUser = users.find(u => u.id === JSON.parse(storedCurrentUserId));
-                    if (localUser) setCurrentUser(localUser);
+        } else {
+            // Fallback to network if not in local storage
+            const userDocRef = doc(db, 'users', userId);
+            getDoc(userDocRef).then(docSnap => {
+                if (docSnap.exists()) {
+                    setCurrentUser({ id: docSnap.id, ...docSnap.data() } as User);
                 }
-        });
+            }).catch(err => {
+                console.warn("Could not fetch user from Firestore, relying on local cache.", err)
+            });
+        }
     }
 
     return () => unsubscribe();
-  }, [toast, currentUser?.id]);
+  }, [toast]);
 
 
   const addUser = useCallback(async (name: string, employeeId: string, role: User['role'] = 'user', password?: string) => {
@@ -346,6 +345,13 @@ export function useCanteenPassState() {
         // Even if firestore fails, update the local state to reflect the deduction.
         // This is critical for the vendor's local database to be consistent.
         const newBalance = userToUpdate.balance - amount;
+        const newTransaction: Transaction = {
+            id: uuidv4(),
+            type: 'debit',
+            amount,
+            description,
+            timestamp: Date.now(),
+        };
         const updatedUser = {
             ...userToUpdate,
             balance: newBalance,
