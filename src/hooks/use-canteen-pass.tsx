@@ -71,8 +71,13 @@ export function useCanteenPassState() {
   };
 
   const getLocalUsers = () => {
-    const localData = localStorage.getItem('canteen-users');
-    return localData ? JSON.parse(localData) : [];
+    try {
+        const localData = localStorage.getItem('canteen-users');
+        return localData ? JSON.parse(localData) : [];
+    } catch (e) {
+        console.error("Could not parse local user data:", e);
+        return [];
+    }
   };
 
   const syncOfflineTransactions = useCallback(async () => {
@@ -91,20 +96,14 @@ export function useCanteenPassState() {
                 const docSnap = await getDoc(userDocRef);
                 if (docSnap.exists()) {
                     const serverUser = docSnap.data() as User;
-                    const serverTxIds = new Set(serverUser.transactions.map(t => t.id));
+                    const serverTxIds = new Set((serverUser.transactions || []).map(t => t.id));
                     
                     const newTransactions = unsyncedTxs.filter(tx => !serverTxIds.has(tx.id));
                     if (newTransactions.length > 0) {
                        const batch = writeBatch(db);
-                       const updatedTransactions = [...newTransactions, ...serverUser.transactions]
+                       const updatedTransactions = [...newTransactions, ...(serverUser.transactions || [])]
                          .sort((a, b) => b.timestamp - a.timestamp)
                          .map(tx => ({...tx, synced: true}));
-                       
-                       const finalBalance = updatedTransactions.reduce((acc, tx) => {
-                           return acc + (tx.type === 'credit' ? tx.amount : -tx.amount);
-                       }, 0); // Recalculate balance from transactions for consistency. Assuming 0 initial.
-                       // A real app would have a base balance to add to. For now this is ok.
-                       // Let's stick to the simpler approach of just updating from current balance.
                        
                        let calculatedBalance = serverUser.balance;
                        newTransactions.forEach(tx => {
@@ -194,7 +193,10 @@ export function useCanteenPassState() {
             title: "You are offline", 
             description: "The application is running on locally saved data.",
         });
-        setUsers(getLocalUsers());
+        const localUsers = getLocalUsers();
+        if (localUsers.length > 0) {
+            setUsers(localUsers);
+        }
         setLoading(false);
     });
 
@@ -211,7 +213,7 @@ export function useCanteenPassState() {
   useEffect(() => {
       const allLocalUsers: User[] = getLocalUsers();
       const count = allLocalUsers.reduce((acc, user) => {
-          return acc + user.transactions.filter(tx => !tx.synced).length;
+          return acc + (user.transactions || []).filter(tx => !tx.synced).length;
       }, 0);
       setPendingSyncCount(count);
   }, [users]);
@@ -277,7 +279,7 @@ export function useCanteenPassState() {
     const updatedUser = {
         ...currentUser,
         balance: currentUser.balance + amount,
-        transactions: [newTransaction, ...currentUser.transactions],
+        transactions: [newTransaction, ...(currentUser.transactions || [])],
         lastUpdated: Date.now(),
     };
     setCurrentUser(updatedUser);
@@ -314,7 +316,7 @@ export function useCanteenPassState() {
     const updatedUser = {
         ...userToUpdate,
         balance: userToUpdate.balance + amount,
-        transactions: [newTransaction, ...userToUpdate.transactions],
+        transactions: [newTransaction, ...(userToUpdate.transactions || [])],
         lastUpdated: Date.now()
     }
 
@@ -355,7 +357,7 @@ export function useCanteenPassState() {
     const updatedCurrentUser = {
         ...currentUser,
         balance: newBalance,
-        transactions: [newTransaction, ...currentUser.transactions],
+        transactions: [newTransaction, ...(currentUser.transactions || [])],
         lastUpdated: newLastUpdated
     }
     setCurrentUser(updatedCurrentUser);
@@ -394,7 +396,7 @@ export function useCanteenPassState() {
 
   const spendTokensFromUser = useCallback(async (userId: string, amount: number, description: string) => {
     let allUsers = getLocalUsers();
-    const userToUpdate = allUsers.find((u:User) => u.id === userId);
+    const userToUpdate = allUsers.find((u:User) => u.id === userId || u.employeeId === userId);
     
     if (!userToUpdate) return { success: false, data: "User not found." };
     if (userToUpdate.balance < amount) return { success: false, data: "Insufficient balance." };
@@ -409,10 +411,11 @@ export function useCanteenPassState() {
     };
 
     userToUpdate.balance -= amount;
+    if(!userToUpdate.transactions) userToUpdate.transactions = [];
     userToUpdate.transactions.unshift(newTransaction);
     userToUpdate.lastUpdated = Date.now();
 
-    const updatedUsers = allUsers.map((u: User) => u.id === userId ? userToUpdate : u);
+    const updatedUsers = allUsers.map((u: User) => u.id === userToUpdate.id ? userToUpdate : u);
     setUsers(updatedUsers);
     localStorage.setItem('canteen-users', JSON.stringify(updatedUsers));
 

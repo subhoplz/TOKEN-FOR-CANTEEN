@@ -118,7 +118,7 @@ export default function QrValidator() {
     }, [stopScanning, users, toast]);
     
     const tick = useCallback(() => {
-        if (!videoRef.current || !videoRef.current.HAVE_ENOUGH_DATA) {
+        if (!videoRef.current || !videoRef.current.HAVE_ENOUGH_DATA || videoRef.current.readyState < 2) {
             animationFrameIdRef.current = requestAnimationFrame(tick);
             return;
         }
@@ -156,9 +156,11 @@ export default function QrValidator() {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
-                await videoRef.current.play();
-                setCameraState('active');
-                animationFrameIdRef.current = requestAnimationFrame(tick);
+                videoRef.current.onloadedmetadata = () => {
+                     videoRef.current?.play();
+                     setCameraState('active');
+                     animationFrameIdRef.current = requestAnimationFrame(tick);
+                }
             }
         } catch (err) {
             console.error('Camera permission error:', err);
@@ -253,7 +255,7 @@ export default function QrValidator() {
                         </Alert>
                     )}
                     {scanResult.signatureValid ? (
-                        <Alert className='bg-green-600/10 border-green-600 text-green-700'>
+                        <Alert className='bg-green-100 border-green-200 text-green-700'>
                             <CheckCircle className="h-4 w-4 text-green-600" />
                             <AlertTitle className='text-green-800'>Signature Valid & User Verified</AlertTitle>
                         </Alert>

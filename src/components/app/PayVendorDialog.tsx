@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from 'react';
@@ -104,8 +103,8 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
                     className='rounded-lg border p-1'
                     data-ai-hint="qr code"
                 />
-                <Alert variant="default" className='bg-accent/10 border-accent/50'>
-                    <CheckCircle className="h-4 w-4 text-accent" />
+                <Alert variant="default" className='bg-green-100 border-green-200'>
+                    <CheckCircle className="h-4 w-4 text-green-600" />
                     <AlertTitle>Tokens Deducted & QR Generated</AlertTitle>
                     <AlertDescription>
                         {amount} tokens have been deducted from your balance. The QR code contains the new balance and a secure signature.
