@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { Metadata } from 'next';
 import ClientLayout from './client-layout';
 import Script from 'next/script';
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 export const metadata: Metadata = {
   title: 'CanteenPass',
@@ -42,6 +43,7 @@ export default function RootLayout({
             }
           `}
         </Script>
+        <SpeedInsights />
       </body>
     </html>
   );
