@@ -8,11 +8,14 @@ import { useRouter } from 'next/navigation';
 import BalanceCard from '@/components/app/BalanceCard';
 import MenuCard from '@/components/app/MenuCard';
 import { Button } from '@/components/ui/button';
-import { Download, LogOut, UserSquare } from 'lucide-react';
+import { Download, LogOut, UserSquare, ShieldCheck, AlertTriangle } from 'lucide-react';
 import MyQrCodeDialog from '@/components/app/MyQrCodeDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import UserLayout from '@/components/app/UserLayout';
+import { usePersistentStorage } from '@/hooks/use-persistent-storage';
+import ActionsCard from '@/components/app/ActionsCard';
+import TransactionHistory from '@/components/app/TransactionHistory';
 
 interface BeforeInstallPromptEvent extends Event {
     readonly platforms: string[];
@@ -29,27 +32,18 @@ export default function DashboardPage() {
 
   const [myQrOpen, setMyQrOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const { state: storageState, request: requestStorage } = usePersistentStorage();
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
         e.preventDefault();
         setInstallPrompt(e as BeforeInstallPromptEvent);
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
     return () => {
         window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
-
-  const handleInstallClick = () => {
-      if (!installPrompt) return;
-      installPrompt.prompt();
-      installPrompt.userChoice.then(() => {
-          setInstallPrompt(null);
-      });
-  };
 
   useEffect(() => {
     if (!loading && !currentUser) {
@@ -57,82 +51,95 @@ export default function DashboardPage() {
     }
   }, [loading, currentUser, router]);
 
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  }
 
-  const getInitials = (name: string) => {
-    if (!name) return '';
-    const names = name.split(' ');
-    if (names.length > 1) {
-      return `${names[0][0]}${names[names.length - 1][0]}`;
+  const handleInstallClick = () => {
+    if (installPrompt) {
+        installPrompt.prompt();
     }
-    return name.substring(0, 2);
-  }
+  };
 
   if (loading || !currentUser) {
     return (
-      <UserLayout>
-        <div className="flex flex-col min-h-screen bg-background">
-            <main className="flex-1 p-4 sm:p-6 lg:p-8">
-                <div className="max-w-md mx-auto space-y-6">
-                    <Skeleton className="h-20 rounded-xl" />
-                    <Skeleton className="h-48 rounded-xl" />
-                    <Skeleton className="h-64 rounded-xl" />
-                    <div className='flex gap-4'>
-                        <Skeleton className="h-20 flex-1 rounded-xl" />
-                        <Skeleton className="h-20 flex-1 rounded-xl" />
+        <UserLayout>
+            <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                    <div>
+                        <Skeleton className="h-8 w-48 mb-2" />
+                        <Skeleton className="h-5 w-64" />
                     </div>
                 </div>
-            </main>
-        </div>
-      </UserLayout>
-    )
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="md:col-span-2 space-y-6">
+                        <Skeleton className="h-[200px] w-full rounded-xl" />
+                        <Skeleton className="h-[200px] w-full rounded-xl" />
+                    </div>
+                    <div className="space-y-6">
+                         <Skeleton className="h-[200px] w-full rounded-xl" />
+                         <Skeleton className="h-[200px] w-full rounded-xl" />
+                    </div>
+                </div>
+            </div>
+        </UserLayout>
+    );
   }
+  
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  };
+  
 
   return (
-    <>
     <UserLayout>
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24">
-        <div className="max-w-md mx-auto grid gap-6">
-            
-            <Card className='flex items-center gap-4 p-4 shadow-sm'>
-                <Avatar className='h-16 w-16 border-2 border-primary'>
-                    <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${currentUser.name}`} alt={currentUser.name} />
-                    <AvatarFallback className='text-2xl'>{getInitials(currentUser.name)}</AvatarFallback>
-                </Avatar>
-                <div>
-                    <h2 className='text-xl font-bold'>{currentUser.name}</h2>
-                    <p className='text-sm text-muted-foreground'>{currentUser.employeeId}</p>
+        <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                 <div>
+                    <h1 className="text-3xl font-bold font-headline">{getGreeting()}, {currentUser.name.split(' ')[0]}!</h1>
+                    <p className="text-muted-foreground">Welcome back to your CanteenPass dashboard.</p>
                 </div>
-                 <Button variant="ghost" size="icon" className='ml-auto' onClick={() => setMyQrOpen(true)}>
-                    <UserSquare className='h-7 w-7 text-primary' />
-                </Button>
-            </Card>
+                <div className="flex items-center gap-2">
+                    {installPrompt && (
+                        <Button onClick={handleInstallClick}>
+                            <Download className="mr-2 h-4 w-4" /> Install App
+                        </Button>
+                    )}
+                     <Button variant="outline" onClick={() => setMyQrOpen(true)}>
+                        <UserSquare className="mr-2 h-4 w-4" /> My Code
+                    </Button>
+                </div>
+            </div>
 
-            <BalanceCard />
-
-            {installPrompt && (
-              <Card>
-                <CardContent className="p-4">
-                  <Button className="w-full h-12" onClick={handleInstallClick}>
-                      <Download className="mr-2 h-5 w-5" />
-                      Install App to your Phone
-                  </Button>
-                </CardContent>
-              </Card>
+            {storageState === 'prompt' && (
+                <Card className='bg-blue-50 border-blue-200'>
+                    <CardHeader className='flex-row gap-4 items-center'>
+                        <ShieldCheck className='h-8 w-8 text-blue-600' />
+                        <div>
+                            <CardTitle className='text-lg'>Enable Enhanced Offline Mode</CardTitle>
+                            <CardDescription className='text-blue-900'>Allow persistent storage for a more reliable offline experience.</CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                         <Button onClick={requestStorage} className='bg-blue-600 hover:bg-blue-700'>
+                           Allow Storage
+                        </Button>
+                    </CardContent>
+                </Card>
             )}
 
-            <MenuCard />
-            
-            <Button variant="link" className='text-muted-foreground' onClick={handleLogout}>
-                <LogOut className="mr-2 h-4 w-4" /> Logout
-            </Button>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className='md:col-span-2 space-y-6'>
+                    <BalanceCard />
+                    <TransactionHistory />
+                </div>
+                <div className="space-y-6">
+                    <ActionsCard />
+                    <MenuCard />
+                </div>
+            </div>
         </div>
-      </main>
+        <MyQrCodeDialog open={myQrOpen} onOpenChange={setMyQrOpen} />
     </UserLayout>
-    <MyQrCodeDialog open={myQrOpen} onOpenChange={setMyQrOpen} />
-    </>
   );
 }
