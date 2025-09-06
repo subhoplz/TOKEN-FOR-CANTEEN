@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'canteen-pass-cache-v1';
+const CACHE_NAME = 'canteen-pass-cache-v2';
 const urlsToCache = [
   '/',
   '/login',
@@ -10,16 +10,15 @@ const urlsToCache = [
   '/vendor/scan',
   '/admin',
   '/admin/employees',
-  '/admin/reports',
   '/admin/tokens',
+  '/admin/reports',
   '/manifest.json',
-  // Note: Add other important assets like CSS, JS bundles if they have static names.
-  // Next.js often generates hashed names, so caching them here can be tricky.
-  // The service worker will cache assets as they are requested.
+  '/globals.css',
+  '/icon-192x192.png',
+  '/icon-512x512.png'
 ];
 
 self.addEventListener('install', event => {
-  // Perform install steps
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
@@ -27,45 +26,6 @@ self.addEventListener('install', event => {
         return cache.addAll(urlsToCache);
       })
   );
-});
-
-self.addEventListener('fetch', event => {
-  // We only want to cache GET requests.
-  if (event.request.method !== 'GET') {
-    return;
-  }
-  
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
-
-        return fetch(event.request).then(
-          response => {
-            // Check if we received a valid response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-
-            // IMPORTANT: Clone the response. A response is a stream
-            // and because we want the browser to consume the response
-            // as well as the cache consuming the response, we need
-            // to clone it so we have two streams.
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return response;
-          }
-        );
-      })
-    );
 });
 
 self.addEventListener('activate', event => {
@@ -79,6 +39,36 @@ self.addEventListener('activate', event => {
           }
         })
       );
+    })
+  );
+});
+
+self.addEventListener('fetch', event => {
+  // Let the browser handle requests for Firebase
+  if (event.request.url.includes('firestore.googleapis.com')) {
+    return;
+  }
+  
+  // Use stale-while-revalidate strategy
+  event.respondWith(
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.match(event.request).then(response => {
+        const fetchPromise = fetch(event.request).then(networkResponse => {
+          // If we got a valid response, clone it and put it in the cache.
+          if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET') {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        }).catch(err => {
+            console.error('Fetch failed; returning offline page instead.', err);
+            // If the network fails, and there is no cached response, you can return an offline fallback page.
+            // For now, we just let the failure happen, but the cached response (if any) is already served.
+        });
+
+        // Return the cached response immediately if there is one,
+        // and the fetch promise will update the cache in the background.
+        return response || fetchPromise;
+      });
     })
   );
 });
