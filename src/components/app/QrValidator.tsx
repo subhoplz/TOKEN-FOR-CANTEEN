@@ -26,22 +26,17 @@ interface QrCodeData {
 }
 
 export default function QrValidator() {
-    const [scannedCode, setScannedCode] = useState<string | null>(null);
-    const [validatedData, setValidatedData] = useState<QrCodeData | null>(null);
-    const [scannedUser, setScannedUser] = useState<User | null>(null);
+    const [scanResult, setScanResult] = useState<{data: QrCodeData, user: User, signatureValid: boolean} | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [signatureValid, setSignatureValid] = useState(false);
-    const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [cameraState, setCameraState] = useState<'loading' | 'denied' | 'active' | 'inactive'>('loading');
 
     const { users, spendTokensFromUser } = useCanteenPass();
     const { toast } = useToast();
     const router = useRouter();
 
     const videoRef = useRef<HTMLVideoElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     const animationFrameIdRef = useRef<number | null>(null);
-    const streamRef = useRef<MediaStream | null>(null);
 
     const validateSignature = (data: QrCodeData) => {
         const dataString = `${data.employee_id}|${data.timestamp}|CanteenPass-Secret-Key`;
@@ -55,144 +50,120 @@ export default function QrValidator() {
         const expectedSignature = `sig-${hash}`;
         return data.device_signature === expectedSignature;
     };
-
-    const handleValidationResult = useCallback((qrInput: string) => {
-        setIsProcessing(true);
-        setError(null);
-        setValidatedData(null);
-        setScannedUser(null);
-        setSignatureValid(false);
-    
-        if (!qrInput.trim()) {
-            setError("QR data is empty.");
-            setIsProcessing(false);
-            return;
-        }
-    
-        try {
-            const parsed = JSON.parse(qrInput) as QrCodeData;
-            const requiredFields: (keyof QrCodeData)[] = ['employee_id', 'timestamp', 'device_signature'];
-    
-            if (requiredFields.some(field => !(field in parsed))) {
-                throw new Error("Missing required field in QR data.");
-            }
-    
-            const isValid = validateSignature(parsed);
-            setSignatureValid(isValid);
-            setValidatedData(parsed); // Set validated data regardless of signature to show info
-    
-            if (!isValid) {
-                setError("Digital signature is invalid! Data may have been tampered with.");
-                setScannedUser(null);
-                setIsProcessing(false);
-                return;
-            }
-    
-            // If signature is valid, find the user in the local DB.
-            // This is still useful for getting the most up-to-date balance.
-            const userInDb = users.find(u => u.employeeId === parsed.employee_id);
-    
-            if (!userInDb) {
-                // If user not in DB (e.g., vendor offline for a long time),
-                // we can still proceed but with a warning, relying on QR data alone.
-                toast({
-                    title: "User not in local records",
-                    description: "Proceeding based on QR data. Sync app when online.",
-                    variant: "default"
-                });
-                // Create a temporary user object from QR data
-                const tempUser: User = {
-                    id: parsed.employee_id, // Use employeeId as a temporary ID
-                    employeeId: parsed.employee_id,
-                    name: parsed.name || 'Unknown User',
-                    balance: parsed.balance || 0, // This might be stale, but it's what we have
-                    transactions: [],
-                    role: 'user',
-                    lastUpdated: new Date(parsed.timestamp).getTime()
-                };
-                setScannedUser(tempUser);
-            } else {
-                setScannedUser(userInDb);
-            }
-    
-        } catch (e) {
-            setError("Invalid QR code. Scanned data is not valid JSON.");
-        } finally {
-            setIsProcessing(false);
-        }
-    }, [users, toast]);
-    
     
     const stopScanning = useCallback(() => {
         if (animationFrameIdRef.current) {
             cancelAnimationFrame(animationFrameIdRef.current);
             animationFrameIdRef.current = null;
         }
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-        }
-        if (videoRef.current) {
+        if (videoRef.current && videoRef.current.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => track.stop());
             videoRef.current.srcObject = null;
         }
+        setCameraState('inactive');
     }, []);
 
+    const handleScan = useCallback((code: string) => {
+        stopScanning();
+        setIsProcessing(true);
+        setError(null);
+        setScanResult(null);
+
+        try {
+            const parsed = JSON.parse(code) as QrCodeData;
+            if (!parsed.employee_id || !parsed.timestamp || !parsed.device_signature) {
+                throw new Error("QR code is missing required data.");
+            }
+
+            const signatureValid = validateSignature(parsed);
+            
+            // First, trust the QR code data if the signature is valid.
+            // Then, try to find the user in the local DB for the most up-to-date info.
+            let userInDb = users.find(u => u.employeeId === parsed.employee_id);
+            let finalUser: User;
+
+            if (userInDb) {
+                finalUser = userInDb;
+            } else {
+                 // If the user isn't in the local DB (e.g., vendor offline for a long time),
+                 // we can still proceed but with a warning, relying on QR data alone.
+                 toast({
+                    title: "User not in local records",
+                    description: "Proceeding based on QR data. Sync app when online.",
+                 });
+                 // Create a temporary user object from QR data
+                 finalUser = {
+                     id: parsed.employee_id, // Use employeeId as a temporary ID
+                     employeeId: parsed.employee_id,
+                     name: parsed.name || 'Unknown User',
+                     balance: parsed.balance !== undefined ? parsed.balance : 0,
+                     transactions: [],
+                     role: 'user',
+                     lastUpdated: new Date(parsed.timestamp).getTime()
+                 };
+            }
+            
+            setScanResult({ data: parsed, user: finalUser, signatureValid });
+
+            if (!signatureValid) {
+                setError("Digital signature is invalid! Data may have been tampered with.");
+            }
+
+        } catch (e) {
+            setError("Invalid QR code format. Please scan a valid CanteenPass QR code.");
+            console.error("QR Parse Error:", e);
+        } finally {
+            setIsProcessing(false);
+        }
+    }, [stopScanning, users, toast]);
+    
     const tick = useCallback(() => {
-        if (!videoRef.current || !canvasRef.current || !streamRef.current) {
+        if (!videoRef.current?.HAVE_ENOUGH_DATA) {
             animationFrameIdRef.current = requestAnimationFrame(tick);
             return;
-        };
+        }
 
-        if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-            const context = canvas.getContext('2d', { willReadFrequently: true });
-            
-            if (context) {
-                canvas.height = video.videoHeight;
-                canvas.width = video.videoWidth;
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                    inversionAttempts: 'dontInvert',
-                });
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
 
-                if (code && code.data) {
-                    setScannedCode(code.data);
-                    stopScanning();
-                    handleValidationResult(code.data);
-                    return; 
-                }
+            if (code?.data) {
+                handleScan(code.data);
+                return;
             }
         }
         animationFrameIdRef.current = requestAnimationFrame(tick);
-    }, [stopScanning, handleValidationResult]);
-
+    }, [handleScan]);
 
     const startScanning = useCallback(async () => {
-        if (streamRef.current) return; // Camera is already running
-
-        setHasCameraPermission(null);
+        setCameraState('loading');
         setError(null);
-        setScannedCode(null);
-        setValidatedData(null);
-        setScannedUser(null);
-        
+        setScanResult(null);
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-            streamRef.current = stream;
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
+                videoRef.current.oncanplay = () => {
+                    setCameraState('active');
+                    animationFrameIdRef.current = requestAnimationFrame(tick);
+                };
             }
-            setHasCameraPermission(true);
-            animationFrameIdRef.current = requestAnimationFrame(tick);
-        } catch (error) {
-            console.error('Error accessing camera:', error);
-            setHasCameraPermission(false);
+        } catch (err) {
+            console.error('Camera permission error:', err);
+            setCameraState('denied');
             setError("Camera permission denied. Please allow camera access in your browser settings.");
         }
     }, [tick]);
-      
+
     useEffect(() => {
         startScanning();
         return () => {
@@ -200,39 +171,40 @@ export default function QrValidator() {
         };
     }, [startScanning, stopScanning]);
 
+
     const handleDeduct = async () => {
-        if (!scannedUser || !validatedData) return;
+        if (!scanResult?.user || !scanResult.signatureValid) return;
         setIsProcessing(true);
 
-        const mealCost = 1; // Or get from validatedData if transaction is included
-        const mealDescription = validatedData.transaction?.description || "Meal served";
+        const mealCost = 1; // Assuming a fixed cost for simplicity
+        const mealDescription = scanResult.data.transaction?.description || "Meal served";
 
-        if (scannedUser.balance < mealCost) {
+        if (scanResult.user.balance < mealCost) {
             toast({
                 title: "Insufficient Balance",
-                description: `${scannedUser.name} has only ${scannedUser.balance} tokens.`,
+                description: `${scanResult.user.name} has only ${scanResult.user.balance} tokens.`,
                 variant: 'destructive'
             });
             setIsProcessing(false);
             return;
         }
 
-        const result = await spendTokensFromUser(scannedUser.id, mealCost, mealDescription);
+        const result = await spendTokensFromUser(scanResult.user.id, mealCost, mealDescription);
         
         if (result.success) {
             toast({
                 title: "Success",
-                description: `${mealCost} token deducted from ${scannedUser.name}. New balance: ${scannedUser.balance - mealCost}`,
+                description: `${mealCost} token deducted from ${scanResult.user.name}.`,
             });
             router.push('/vendor/dashboard');
         } else {
              toast({
-                title: "Failed",
+                title: "Deduction Failed",
                 description: result.data,
                 variant: 'destructive'
             });
+             setIsProcessing(false);
         }
-        setIsProcessing(false);
     }
     
     const handleReset = () => {
@@ -240,102 +212,97 @@ export default function QrValidator() {
         startScanning();
     }
 
-    const isScanning = hasCameraPermission && !scannedCode;
-    const showResults = validatedData && scannedUser;
-    const showPermissionDenied = hasCameraPermission === false;
-    const showLoading = hasCameraPermission === null;
+    const renderContent = () => {
+        if (cameraState === 'loading') {
+            return (
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                </div>
+            );
+        }
+        if (cameraState === 'denied') {
+             return (
+                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-white p-4 h-full text-center">
+                    <VideoOff className="h-12 w-12 mb-4" />
+                    <h3 className="text-xl font-bold">Camera Access Denied</h3>
+                    <p>{error}</p>
+                </div>
+            );
+        }
+        if (scanResult) {
+            return (
+                <div className='space-y-4 p-4'>
+                    {error && (
+                        <Alert variant="destructive">
+                            <XCircle className="h-4 w-4" />
+                            <AlertTitle>Validation Failed</AlertTitle>
+                            <AlertDescription>{error}</AlertDescription>
+                        </Alert>
+                    )}
+                    {scanResult.signatureValid ? (
+                        <Alert className='bg-green-600/10 border-green-600 text-green-700'>
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <AlertTitle className='text-green-800'>Signature Valid & User Verified</AlertTitle>
+                        </Alert>
+                    ) : (
+                        <Alert variant="destructive">
+                            <ShieldAlert className="h-4 w-4" />
+                            <AlertTitle>Signature Invalid!</AlertTitle>
+                            <AlertDescription>The QR code data may be fraudulent. Do not trust this data.</AlertDescription>
+                        </Alert>
+                    )}
+                     <Card className='bg-background'>
+                        <CardHeader>
+                            <CardTitle>{scanResult.user.name}</CardTitle>
+                            <CardDescription>{scanResult.user.employeeId}</CardDescription>
+                        </CardHeader>
+                        <CardContent className='flex justify-between items-center'>
+                            <div className='flex items-center gap-2'>
+                                <Ticket className='h-6 w-6 text-primary'/>
+                                <span className='text-xl font-bold'>{scanResult.user.balance}</span>
+                                <span className='text-muted-foreground'>Tokens</span>
+                            </div>
+                            <div>
+                                <p className='text-sm font-semibold'>Meal Cost:</p>
+                                <p className='text-muted-foreground'>1 Token</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            );
+        }
+        return null; // When camera is active, we just show the video feed.
+    }
 
 
     return (
         <Card className="w-full shadow-lg">
              <Button variant="ghost" size="sm" className="absolute top-4 left-4" onClick={() => router.back()}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back
             </Button>
             <CardHeader className='text-center pt-12'>
                 <CardTitle className='flex items-center gap-2 justify-center text-3xl'><QrCode/> Scan & Validate</CardTitle>
-                <CardDescription>Position the user's QR code within the frame to validate.</CardDescription>
+                <CardDescription>Position the user's QR code within the frame.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="relative aspect-square w-full max-w-sm mx-auto overflow-hidden rounded-lg border bg-secondary">
-                    
-                    {showLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                        </div>
-                    )}
-                    
-                    {showPermissionDenied && (
-                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-white p-4 h-full text-center">
-                            <VideoOff className="h-12 w-12 mb-4" />
-                            <h3 className="text-xl font-bold">Camera Access Denied</h3>
-                            <p>{error}</p>
-                        </div>
-                    )}
-
-                    <video ref={videoRef} className={cn("w-full h-full object-cover", { 'hidden': !isScanning })} autoPlay playsInline muted />
-                    <canvas ref={canvasRef} style={{ display: 'none' }} />
-                    {isScanning && <div className="absolute inset-0 border-[8px] border-primary/50 rounded-lg" />}
-
-                    {(showResults || error) && !isScanning && (
-                        <div className='space-y-4 p-4'>
-                             {error && (
-                                <Alert variant="destructive">
-                                    <XCircle className="h-4 w-4" />
-                                    <AlertTitle>Validation Failed</AlertTitle>
-                                    <AlertDescription>{error}</AlertDescription>
-                                </Alert>
-                            )}
-                            {showResults && (
-                                <>
-                                    {signatureValid ? (
-                                        <Alert className='bg-green-600/10 border-green-600 text-green-700'>
-                                            <CheckCircle className="h-4 w-4 text-green-600" />
-                                            <AlertTitle className='text-green-800'>Signature Valid & User Verified</AlertTitle>
-                                        </Alert>
-                                    ) : (
-                                        <Alert variant="destructive">
-                                            <ShieldAlert className="h-4 w-4" />
-                                            <AlertTitle>Signature Invalid!</AlertTitle>
-                                            <AlertDescription>
-                                                The QR code data may be fraudulent. Do not trust this data.
-                                            </AlertDescription>
-                                        </Alert>
-                                    )}
-                                    <Card className='bg-background'>
-                                        <CardHeader>
-                                            <CardTitle>{scannedUser.name}</CardTitle>
-                                            <CardDescription>{scannedUser.employeeId}</CardDescription>
-                                        </CardHeader>
-                                        <CardContent className='flex justify-between items-center'>
-                                            <div className='flex items-center gap-2'>
-                                                <Ticket className='h-6 w-6 text-primary'/>
-                                                <span className='text-xl font-bold'>{scannedUser.balance}</span>
-                                                <span className='text-muted-foreground'>Tokens</span>
-                                            </div>
-                                            <div>
-                                                <p className='text-sm font-semibold'>Meal Cost:</p>
-                                                <p className='text-muted-foreground'>1 Token</p>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                </>
-                            )}
-                        </div>
-                    )}
+                    <video ref={videoRef} className={cn("w-full h-full object-cover", cameraState !== 'active' && 'hidden')} autoPlay playsInline muted />
+                    {cameraState === 'active' && <div className="absolute inset-0 border-[8px] border-primary/50 rounded-lg" />}
+                    {renderContent()}
                 </div>
             </CardContent>
             <CardFooter className='flex flex-col gap-2 pt-4'>
-                {showResults && signatureValid ? (
+                {scanResult && scanResult.signatureValid ? (
                     <>
-                        <Button className="w-full h-12 text-lg" onClick={handleDeduct} disabled={scannedUser.balance < 1 || isProcessing}>
+                        <Button className="w-full h-12 text-lg" onClick={handleDeduct} disabled={scanResult.user.balance < 1 || isProcessing}>
                            {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Utensils className='mr-2' />}
-                           {isProcessing ? 'Processing...' : scannedUser.balance < 1 ? 'Insufficient Balance' : 'Deduct 1 Token & Serve'}
+                           {isProcessing ? 'Processing...' : scanResult.user.balance < 1 ? 'Insufficient Balance' : 'Deduct 1 Token & Serve'}
                         </Button>
                         <Button onClick={handleReset} variant="outline" className="w-full" disabled={isProcessing}>Cancel & Scan Next</Button>
                     </>
                 ) : (
-                     <Button onClick={handleReset} variant="outline" className='w-full' disabled={isScanning}>
-                        {isScanning ? 'Scanning...' : 'Scan Another QR'}
+                     <Button onClick={handleReset} variant="outline" className='w-full' disabled={cameraState === 'active' || isProcessing}>
+                        {cameraState === 'active' ? 'Scanning...' : 'Scan Another QR'}
                     </Button>
                 )}
             </CardFooter>

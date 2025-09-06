@@ -14,6 +14,7 @@ import {
 import Image from 'next/image';
 import { UserSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 
 interface MyQrCodeDialogProps {
   open: boolean;
@@ -22,7 +23,7 @@ interface MyQrCodeDialogProps {
 
 export default function MyQrCodeDialog({ open, onOpenChange }: MyQrCodeDialogProps) {
   const { currentUser } = useCanteenPass();
-  const [qrData, setQrData] = useState<string | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
 
   // This is a simplified "hash" for demonstration. In a real app, use a proper crypto library.
   const createSignature = (data: { employee_id: string, timestamp: string }) => {
@@ -38,7 +39,7 @@ export default function MyQrCodeDialog({ open, onOpenChange }: MyQrCodeDialogPro
   };
 
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && open) {
       const timestamp = new Date().toISOString();
       const qrPayload = {
         employee_id: currentUser.employeeId,
@@ -52,7 +53,18 @@ export default function MyQrCodeDialog({ open, onOpenChange }: MyQrCodeDialogPro
         device_signature: signature
       }
       
-      setQrData(JSON.stringify(fullQrData, null, 2));
+      QRCode.toDataURL(JSON.stringify(fullQrData), {
+        errorCorrectionLevel: 'H',
+        type: 'image/png',
+        quality: 0.9,
+        margin: 1,
+      })
+      .then(url => {
+        setQrCodeUrl(url);
+      })
+      .catch(err => {
+        console.error("Failed to generate QR code:", err);
+      });
     }
   }, [currentUser, open]);
 
@@ -69,9 +81,9 @@ export default function MyQrCodeDialog({ open, onOpenChange }: MyQrCodeDialogPro
           </DialogDescription>
         </DialogHeader>
         <div className='flex flex-col items-center gap-4 py-4'>
-            {qrData ? (
+            {qrCodeUrl ? (
                 <Image 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrData)}`}
+                    src={qrCodeUrl}
                     alt="My Personal QR Code"
                     width={250}
                     height={250}

@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircle, QrCode, Loader2 } from 'lucide-react';
+import QRCode from 'qrcode';
 
 interface PayVendorDialogProps {
   open: boolean;
@@ -27,7 +28,7 @@ interface PayVendorDialogProps {
 export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogProps) {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [qrData, setQrData] = useState<string | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const { balance, spendTokens, currentUser } = useCanteenPass();
   const { toast } = useToast();
@@ -53,11 +54,26 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
 
     setIsGenerating(true);
     const result = await spendTokens(numericAmount, description);
-    setIsGenerating(false);
-
+    
     if (result.success && result.data) {
-        setQrData(result.data);
+        QRCode.toDataURL(result.data, {
+            errorCorrectionLevel: 'H',
+            type: 'image/png',
+            quality: 0.9,
+            margin: 1,
+        })
+        .then(url => {
+            setQrCodeUrl(url);
+        })
+        .catch(err => {
+            console.error("Failed to generate QR code:", err);
+            toast({ title: 'QR Generation Failed', description: 'Could not create QR code.', variant: 'destructive' });
+        })
+        .finally(() => {
+            setIsGenerating(false);
+        });
     } else {
+        setIsGenerating(false);
         toast({ title: 'Payment Failed', description: result.data || 'An unknown error occurred.', variant: 'destructive' });
     }
   };
@@ -65,7 +81,7 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
   const handleClose = () => {
     setAmount('');
     setDescription('');
-    setQrData(null);
+    setQrCodeUrl(null);
     onOpenChange(false);
   }
 
@@ -73,15 +89,15 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Scan Vendor QR</DialogTitle>
+          <DialogTitle>Pay Vendor</DialogTitle>
           <DialogDescription>
-            {qrData ? 'Show this QR code to the vendor to complete your payment.' : 'Enter payment details to generate a QR code for offline validation.'}
+            {qrCodeUrl ? 'Show this QR code to the vendor to complete your payment.' : 'Enter payment details to generate a QR code for offline validation.'}
           </DialogDescription>
         </DialogHeader>
-        {qrData ? (
+        {qrCodeUrl ? (
             <div className='flex flex-col items-center gap-4 py-4'>
                 <Image 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrData)}`}
+                    src={qrCodeUrl}
                     alt="Payment QR Code"
                     width={250}
                     height={250}
@@ -109,10 +125,10 @@ export default function PayVendorDialog({ open, onOpenChange }: PayVendorDialogP
             </div>
         )}
         <DialogFooter>
-            {qrData ? (
-                <Button onClick={handleClose}>Done</Button>
+            {qrCodeUrl ? (
+                <Button onClick={handleClose} className='w-full'>Done</Button>
             ) : (
-                <Button onClick={handleGenerateQR} disabled={!currentUser || isGenerating}>
+                <Button onClick={handleGenerateQR} disabled={!currentUser || isGenerating} className='w-full'>
                     {isGenerating ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : <QrCode className='mr-2 h-4 w-4' />}
                     {isGenerating ? 'Generating...' : 'Generate Payment QR'}
                 </Button>

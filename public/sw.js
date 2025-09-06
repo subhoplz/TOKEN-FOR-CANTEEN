@@ -1,73 +1,80 @@
+// v3 - A more robust service worker
 
-const CACHE_NAME = 'canteen-pass-cache-v2';
-const urlsToCache = [
+const CACHE_NAME = 'canteen-pass-cache-v3';
+
+// The app shell consists of the essential files needed to run the app.
+const APP_SHELL_URLS = [
   '/',
-  '/login',
-  '/login/user',
-  '/login/vendor',
-  '/login/admin',
-  '/vendor/dashboard',
-  '/vendor/scan',
-  '/admin',
-  '/admin/employees',
-  '/admin/tokens',
-  '/admin/reports',
   '/manifest.json',
-  '/globals.css',
-  '/icon-192x192.png',
-  '/icon-512x512.png'
+  '/favicon.ico',
+  // Add other critical pages if necessary, e.g., '/login'
 ];
 
-self.addEventListener('install', event => {
+// On install, pre-cache the app shell
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('Service Worker: Caching app shell');
+      return cache.addAll(APP_SHELL_URLS);
+    })
   );
 });
 
-self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
+// On activate, clean up old caches
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(cacheNames => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('Service Worker: Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     })
   );
+  return self.clients.claim();
 });
 
-self.addEventListener('fetch', event => {
-  // Let the browser handle requests for Firebase
-  if (event.request.url.includes('firestore.googleapis.com')) {
+
+// On fetch, use a stale-while-revalidate strategy
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Don't cache Firestore requests, let Firebase handle its own offline persistence
+  if (url.origin.includes('firestore.googleapis.com')) {
     return;
   }
   
-  // Use stale-while-revalidate strategy
+  // For navigation requests (HTML pages), use Network Falling Back to Cache
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() => {
+        return caches.match(request.url) || caches.match('/');
+      })
+    );
+    return;
+  }
+  
+  // For other requests (CSS, JS, images), use Stale-While-Revalidate
   event.respondWith(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.match(event.request).then(response => {
-        const fetchPromise = fetch(event.request).then(networkResponse => {
-          // If we got a valid response, clone it and put it in the cache.
-          if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET') {
-            cache.put(event.request, networkResponse.clone());
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.match(request).then((cachedResponse) => {
+        const fetchPromise = fetch(request).then((networkResponse) => {
+          // If the request is successful, update the cache
+          if (networkResponse.ok) {
+            cache.put(request, networkResponse.clone());
           }
           return networkResponse;
         }).catch(err => {
-            console.error('Fetch failed; returning offline page instead.', err);
-            // If the network fails, and there is no cached response, you can return an offline fallback page.
-            // For now, we just let the failure happen, but the cached response (if any) is already served.
+            // Network fetch failed, which is expected offline.
+            // The cached response will be used if available.
         });
 
-        // Return the cached response immediately if there is one,
-        // and the fetch promise will update the cache in the background.
-        return response || fetchPromise;
+        // Return the cached response immediately if available, otherwise wait for the network
+        return cachedResponse || fetchPromise;
       });
     })
   );
