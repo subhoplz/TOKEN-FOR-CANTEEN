@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
 
 export default function VendorDashboardPage() {
-    const { loading, currentUser, transactions } = useCanteenPass();
+    const { loading, currentUser, transactions, pendingSyncCount } = useCanteenPass();
     const router = useRouter();
 
      useEffect(() => {
@@ -69,8 +69,8 @@ export default function VendorDashboardPage() {
                                 <HardDrive className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">0</div>
-                                <p className="text-xs text-muted-foreground">All transactions are saved locally</p>
+                                <div className="text-2xl font-bold">{pendingSyncCount}</div>
+                                <p className="text-xs text-muted-foreground">Offline transactions to upload</p>
                             </CardContent>
                         </Card>
                      </div>

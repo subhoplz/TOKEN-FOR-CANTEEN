@@ -14,11 +14,10 @@ import {
   deleteDoc,
   writeBatch,
   getDocs,
-  query,
-  where,
   getDoc
 } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
+import { useOnlineStatus } from './use-online-status';
 
 interface CanteenPassContextType {
   loading: boolean;
@@ -26,6 +25,7 @@ interface CanteenPassContextType {
   currentUser: User | null;
   balance: number;
   transactions: Transaction[];
+  pendingSyncCount: number;
   addUser: (name: string, employeeId: string, role?: User['role'], password?: string) => void;
   addTokens: (amount: number) => void;
   addTokensToUser: (userId: string, amount: number) => void;
@@ -53,8 +53,10 @@ export function useCanteenPassState() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const { toast } = useToast();
   const seedingRef = useRef(false);
+  const isOnline = useOnlineStatus();
 
   const createSignature = (data: { employee_id: string, timestamp: string }) => {
     const dataString = `${data.employee_id}|${data.timestamp}|CanteenPass-Secret-Key`; // Added a static "secret"
@@ -68,12 +70,85 @@ export function useCanteenPassState() {
     return `sig-${hash}`;
   };
 
+  const getLocalUsers = () => {
+    const localData = localStorage.getItem('canteen-users');
+    return localData ? JSON.parse(localData) : [];
+  };
+
+  const syncOfflineTransactions = useCallback(async () => {
+    if (!isOnline) return;
+
+    const allUsers: User[] = getLocalUsers();
+    let updated = false;
+
+    const syncPromises = allUsers.map(async (user) => {
+        const unsyncedTxs = user.transactions.filter(tx => !tx.synced);
+        if (unsyncedTxs.length > 0) {
+            updated = true;
+            try {
+                const userDocRef = doc(db, 'users', user.id);
+                // We don't just update, we fetch the latest state from DB to merge
+                const docSnap = await getDoc(userDocRef);
+                if (docSnap.exists()) {
+                    const serverUser = docSnap.data() as User;
+                    const serverTxIds = new Set(serverUser.transactions.map(t => t.id));
+                    
+                    const newTransactions = unsyncedTxs.filter(tx => !serverTxIds.has(tx.id));
+                    if (newTransactions.length > 0) {
+                       const batch = writeBatch(db);
+                       const updatedTransactions = [...newTransactions, ...serverUser.transactions]
+                         .sort((a, b) => b.timestamp - a.timestamp)
+                         .map(tx => ({...tx, synced: true}));
+                       
+                       const finalBalance = updatedTransactions.reduce((acc, tx) => {
+                           return acc + (tx.type === 'credit' ? tx.amount : -tx.amount);
+                       }, 0); // Recalculate balance from transactions for consistency. Assuming 0 initial.
+                       // A real app would have a base balance to add to. For now this is ok.
+                       // Let's stick to the simpler approach of just updating from current balance.
+                       
+                       let calculatedBalance = serverUser.balance;
+                       newTransactions.forEach(tx => {
+                           if(tx.type === 'debit') calculatedBalance -= tx.amount;
+                           else calculatedBalance += tx.amount;
+                       });
+
+
+                       batch.update(userDocRef, {
+                           transactions: updatedTransactions,
+                           balance: calculatedBalance,
+                           lastUpdated: Date.now()
+                       });
+                       await batch.commit();
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to sync transactions for user:", user.id, e);
+                updated = false; // Don't show sync success if any fail
+            }
+        }
+    });
+
+    await Promise.all(syncPromises);
+
+    if (updated) {
+        toast({
+            title: "Data Synced",
+            description: "All offline transactions have been successfully saved to the server."
+        });
+    }
+  }, [isOnline, toast]);
+
+  useEffect(() => {
+    if (isOnline) {
+      syncOfflineTransactions();
+    }
+  }, [isOnline, syncOfflineTransactions]);
+
+
   // Seed database if it's empty
   useEffect(() => {
     const seedDatabase = async () => {
-        if (seedingRef.current) {
-            return;
-        }
+        if (seedingRef.current) return;
         seedingRef.current = true;
         
         try {
@@ -89,7 +164,7 @@ export function useCanteenPassState() {
                 await batch.commit();
             }
         } catch (e) {
-            console.error("Could not connect to Firestore to seed the database. This is expected if the database hasn't been created in the Firebase console yet. Please create a Firestore database.", e);
+            console.error("Could not connect to Firestore to seed the database.", e);
         }
     };
     seedDatabase();
@@ -100,20 +175,16 @@ export function useCanteenPassState() {
     setLoading(true);
     const usersCollection = collection(db, 'users');
     const unsubscribe = onSnapshot(usersCollection, (snapshot) => {
-        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+        const usersData: User[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), transactions: (doc.data().transactions || []).map((t: Transaction) => ({...t, synced: true})) } as User));
         setUsers(usersData);
-        localStorage.setItem('canteen-users', JSON.stringify(usersData)); // Cache for offline use
+        localStorage.setItem('canteen-users', JSON.stringify(usersData));
 
-        // Update current user with fresh data
         if (currentUser) {
             const updatedCurrentUser = usersData.find(u => u.id === currentUser.id);
             if (updatedCurrentUser) {
                 setCurrentUser(updatedCurrentUser);
-                localStorage.setItem('canteen-current-user-id', JSON.stringify(updatedCurrentUser.id));
             } else {
-                // User was deleted, log them out
-                setCurrentUser(null);
-                localStorage.removeItem('canteen-current-user-id');
+                logout();
             }
         }
         setLoading(false);
@@ -121,42 +192,29 @@ export function useCanteenPassState() {
         console.warn("Firestore snapshot error:", error);
         toast({ 
             title: "You are offline", 
-            description: "The application is running on locally saved data. Some features may be limited.",
+            description: "The application is running on locally saved data.",
         });
-        const localUsers = localStorage.getItem('canteen-users');
-        if (localUsers) {
-            setUsers(JSON.parse(localUsers));
-        }
+        setUsers(getLocalUsers());
         setLoading(false);
     });
 
-    // Restore current user from local storage on initial load
     const storedCurrentUserId = localStorage.getItem('canteen-current-user-id');
     if (storedCurrentUserId) {
-        const userId = JSON.parse(storedCurrentUserId);
-        // Try getting from local storage first for faster offline load
-        const localUsers = localStorage.getItem('canteen-users');
-        if (localUsers) {
-            const users = JSON.parse(localUsers) as User[];
-            const localUser = users.find(u => u.id === userId);
-            if (localUser) {
-                setCurrentUser(localUser);
-            }
-        } else {
-            // Fallback to network if not in local storage
-            const userDocRef = doc(db, 'users', userId);
-            getDoc(userDocRef).then(docSnap => {
-                if (docSnap.exists()) {
-                    setCurrentUser({ id: docSnap.id, ...docSnap.data() } as User);
-                }
-            }).catch(err => {
-                console.warn("Could not fetch user from Firestore, relying on local cache.", err)
-            });
-        }
+        const localUsers = getLocalUsers();
+        const localUser = localUsers.find((u:User) => u.id === JSON.parse(storedCurrentUserId));
+        if (localUser) setCurrentUser(localUser);
     }
 
     return () => unsubscribe();
   }, [toast]);
+  
+  useEffect(() => {
+      const allLocalUsers: User[] = getLocalUsers();
+      const count = allLocalUsers.reduce((acc, user) => {
+          return acc + user.transactions.filter(tx => !tx.synced).length;
+      }, 0);
+      setPendingSyncCount(count);
+  }, [users]);
 
 
   const addUser = useCallback(async (name: string, employeeId: string, role: User['role'] = 'user', password?: string) => {
@@ -165,8 +223,8 @@ export function useCanteenPassState() {
         await addDoc(usersCollection, {
             employeeId,
             name,
-            password: password || 'password', // Default password for simplicity
-            balance: (role === 'admin' || role === 'vendor') ? 0 : 0,
+            password: password || 'password',
+            balance: 0,
             transactions: [],
             role: role,
             lastUpdated: Date.now()
@@ -206,56 +264,75 @@ export function useCanteenPassState() {
     if (!currentUser) return;
     if (amount <= 0) return;
 
+    const newTransaction: Transaction = {
+        id: uuidv4(),
+        type: 'credit',
+        amount,
+        description: 'Self-assigned tokens',
+        timestamp: Date.now(),
+        synced: isOnline,
+    };
+    
+    // Optimistic UI update
+    const updatedUser = {
+        ...currentUser,
+        balance: currentUser.balance + amount,
+        transactions: [newTransaction, ...currentUser.transactions],
+        lastUpdated: Date.now(),
+    };
+    setCurrentUser(updatedUser);
+    setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+
     try {
         const userDocRef = doc(db, 'users', currentUser.id);
-        const newTransaction: Transaction = {
-            id: uuidv4(),
-            type: 'credit',
-            amount,
-            description: 'Self-assigned tokens',
-            timestamp: Date.now(),
-        };
-        
         await updateDoc(userDocRef, {
-            balance: currentUser.balance + amount,
-            transactions: [newTransaction, ...currentUser.transactions],
-            lastUpdated: Date.now(),
+            balance: updatedUser.balance,
+            transactions: updatedUser.transactions.map(t => ({...t, synced: true})),
+            lastUpdated: updatedUser.lastUpdated,
         });
-        
         toast({ title: "Success", description: `${amount} tokens added to your account.` });
     } catch (error) {
         console.error("Error adding tokens:", error);
-        toast({ title: "Error", description: "Failed to add tokens. Check your connection.", variant: "destructive" });
+        toast({ title: "Error", description: "Failed to add tokens. It's saved locally.", variant: "destructive" });
     }
-  }, [currentUser, toast]);
+  }, [currentUser, toast, isOnline]);
 
   const addTokensToUser = useCallback(async (userId: string, amount: number) => {
     if (amount <= 0) return;
     const userToUpdate = users.find(u => u.id === userId);
     if (!userToUpdate) return;
     
+     const newTransaction: Transaction = {
+        id: uuidv4(),
+        type: 'credit',
+        amount,
+        description: 'Tokens added by admin',
+        timestamp: Date.now(),
+        synced: isOnline,
+    };
+
+    const updatedUser = {
+        ...userToUpdate,
+        balance: userToUpdate.balance + amount,
+        transactions: [newTransaction, ...userToUpdate.transactions],
+        lastUpdated: Date.now()
+    }
+
+    setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
+    
     try {
         const userDocRef = doc(db, 'users', userId);
-        const newTransaction: Transaction = {
-            id: uuidv4(),
-            type: 'credit',
-            amount,
-            description: 'Tokens added by admin',
-            timestamp: Date.now(),
-        };
-
         await updateDoc(userDocRef, {
-            balance: userToUpdate.balance + amount,
-            transactions: [newTransaction, ...userToUpdate.transactions],
-            lastUpdated: Date.now(),
+            balance: updatedUser.balance,
+            transactions: updatedUser.transactions.map(t => ({...t, synced: true})),
+            lastUpdated: updatedUser.lastUpdated,
         });
-
         toast({ title: 'Success', description: `${amount} tokens added to ${userToUpdate.name}'s account.` });
     } catch (error) {
         console.error("Error adding tokens to user:", error);
-        toast({ title: "Error", description: `Failed to add tokens to ${userToUpdate.name}.`, variant: "destructive" });
+        toast({ title: "Error", description: `Failed to add tokens to ${userToUpdate.name}. It's saved locally.`, variant: "destructive" });
     }
-  }, [users, toast]);
+  }, [users, toast, isOnline]);
 
 
   const spendTokens = useCallback(async (amount: number, description: string) => {
@@ -263,117 +340,87 @@ export function useCanteenPassState() {
     if (amount <= 0) return { success: false, data: "Amount must be positive." };
     if (currentUser.balance < amount) return { success: false, data: "Insufficient balance." };
 
-    try {
-        const userDocRef = doc(db, 'users', currentUser.id);
-        const newTransaction: Transaction = {
-            id: uuidv4(),
-            type: 'debit',
-            amount,
-            description,
-            timestamp: Date.now(),
-        };
-        
-        const newBalance = currentUser.balance - amount;
-        const newLastUpdated = Date.now();
-        
-        // This will attempt to write to Firestore, but doesn't block the UI
-        updateDoc(userDocRef, {
-            balance: newBalance,
-            transactions: [newTransaction, ...currentUser.transactions],
-            lastUpdated: newLastUpdated,
-        }).catch(err => {
-            console.warn("Could not sync transaction to Firestore, will rely on QR.", err);
-            toast({ title: "Offline Transaction", description: "Your transaction will be synced later."})
-        });
+    const newTransaction: Transaction = {
+        id: uuidv4(),
+        type: 'debit',
+        amount,
+        description,
+        timestamp: Date.now(),
+        synced: isOnline,
+    };
+    
+    const newBalance = currentUser.balance - amount;
+    const newLastUpdated = Date.now();
 
-        const qrPayload = {
-            employee_id: currentUser.employeeId,
-            timestamp: new Date(newLastUpdated).toISOString(),
-        };
-        const signature = createSignature(qrPayload);
-        
-        const qrData = {
-            ...qrPayload,
-            device_signature: signature,
-            name: currentUser.name,
-            balance: newBalance,
-            transaction: {
-                amount: newTransaction.amount,
-                description: newTransaction.description
-            }
-        };
-
-        // Also update local state immediately for responsiveness
-        const updatedCurrentUser = {
-            ...currentUser,
-            balance: newBalance,
-            transactions: [newTransaction, ...currentUser.transactions],
-            lastUpdated: newLastUpdated
-        }
-        setCurrentUser(updatedCurrentUser);
-        const updatedUsers = users.map(u => u.id === currentUser.id ? updatedCurrentUser : u);
-        setUsers(updatedUsers);
-        localStorage.setItem('canteen-users', JSON.stringify(updatedUsers));
-        localStorage.setItem('canteen-current-user-id', JSON.stringify(currentUser.id));
-
-
-        return { success: true, data: JSON.stringify(qrData, null, 2) };
-    } catch (error) {
-        console.error("Error spending tokens:", error);
-        return { success: false, data: "Failed to process transaction." };
+    const updatedCurrentUser = {
+        ...currentUser,
+        balance: newBalance,
+        transactions: [newTransaction, ...currentUser.transactions],
+        lastUpdated: newLastUpdated
     }
-  }, [currentUser, users, toast]);
+    setCurrentUser(updatedCurrentUser);
+    const updatedUsers = users.map(u => u.id === currentUser.id ? updatedCurrentUser : u);
+    setUsers(updatedUsers);
+    localStorage.setItem('canteen-users', JSON.stringify(updatedUsers));
+    
+    updateDoc(doc(db, 'users', currentUser.id), {
+        balance: newBalance,
+        transactions: updatedCurrentUser.transactions.map(t => ({...t, synced: true})),
+        lastUpdated: newLastUpdated,
+    }).catch(err => {
+        console.warn("Could not sync transaction to Firestore, will rely on QR.", err);
+        toast({ title: "Offline Transaction", description: "Your transaction will be synced later."})
+    });
+
+    const qrPayload = {
+        employee_id: currentUser.employeeId,
+        timestamp: new Date(newLastUpdated).toISOString(),
+    };
+    const signature = createSignature(qrPayload);
+    
+    const qrData = {
+        ...qrPayload,
+        device_signature: signature,
+        name: currentUser.name,
+        balance: newBalance,
+        transaction: {
+            amount: newTransaction.amount,
+            description: newTransaction.description
+        }
+    };
+
+    return { success: true, data: JSON.stringify(qrData, null, 2) };
+  }, [currentUser, users, toast, isOnline]);
 
   const spendTokensFromUser = useCallback(async (userId: string, amount: number, description: string) => {
-    const userToUpdate = users.find(u => u.id === userId);
+    let allUsers = getLocalUsers();
+    const userToUpdate = allUsers.find((u:User) => u.id === userId);
+    
     if (!userToUpdate) return { success: false, data: "User not found." };
     if (userToUpdate.balance < amount) return { success: false, data: "Insufficient balance." };
 
-    try {
-        const userDocRef = doc(db, 'users', userId);
-        const newTransaction: Transaction = {
-            id: uuidv4(),
-            type: 'debit',
-            amount,
-            description,
-            timestamp: Date.now(),
-        };
+    const newTransaction: Transaction = {
+        id: uuidv4(),
+        type: 'debit',
+        amount,
+        description,
+        timestamp: Date.now(),
+        synced: false // Always false initially, will be synced later
+    };
 
-        await updateDoc(userDocRef, {
-            balance: userToUpdate.balance - amount,
-            transactions: [newTransaction, ...userToUpdate.transactions],
-            lastUpdated: Date.now(),
-        });
-        
-        return { success: true, data: "Transaction successful" };
-    } catch (error) {
-        console.error("Error spending tokens from user:", error);
-        toast({ title: "Sync Failed", description: "Could not sync transaction to the database. It is saved locally.", variant: "destructive" });
-        
-        // --- OFFLINE FALLBACK for Vendor ---
-        // Even if firestore fails, update the local state to reflect the deduction.
-        // This is critical for the vendor's local database to be consistent.
-        const newBalance = userToUpdate.balance - amount;
-        const newTransaction: Transaction = {
-            id: uuidv4(),
-            type: 'debit',
-            amount,
-            description,
-            timestamp: Date.now(),
-        };
-        const updatedUser = {
-            ...userToUpdate,
-            balance: newBalance,
-            transactions: [newTransaction, ...userToUpdate.transactions],
-            lastUpdated: Date.now()
-        }
-        const updatedUsers = users.map(u => u.id === userId ? updatedUser : u);
-        setUsers(updatedUsers);
-        localStorage.setItem('canteen-users', JSON.stringify(updatedUsers));
+    userToUpdate.balance -= amount;
+    userToUpdate.transactions.unshift(newTransaction);
+    userToUpdate.lastUpdated = Date.now();
 
-        return { success: true, data: "Transaction saved locally" };
-    }
-  }, [users, toast]);
+    const updatedUsers = allUsers.map((u: User) => u.id === userId ? userToUpdate : u);
+    setUsers(updatedUsers);
+    localStorage.setItem('canteen-users', JSON.stringify(updatedUsers));
+
+    // After updating local state, attempt to sync.
+    syncOfflineTransactions();
+
+    return { success: true, data: "Transaction saved locally" };
+  }, [syncOfflineTransactions]);
 
   const getSpendingHabits = useCallback(() => {
     const transactions = currentUser?.transactions || [];
@@ -426,7 +473,6 @@ export function useCanteenPassState() {
     }
   }, [users, toast]);
 
-  // Aggregate transactions for admin view
   const allTransactions = users.flatMap(u => 
       (u.transactions || []).map(t => ({...t, userName: u.name}))
   ).sort((a,b) => b.timestamp - a.timestamp);
@@ -438,6 +484,7 @@ export function useCanteenPassState() {
     currentUser,
     balance: currentUser?.balance ?? 0,
     transactions: currentUser?.role === 'admin' ? allTransactions : (currentUser?.transactions ?? []),
+    pendingSyncCount,
     addUser,
     addTokens, 
     addTokensToUser,

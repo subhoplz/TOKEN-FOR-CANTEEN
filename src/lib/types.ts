@@ -4,6 +4,7 @@ export interface Transaction {
   amount: number;
   description: string;
   timestamp: number;
+  synced?: boolean;
 }
 
 export interface User {
