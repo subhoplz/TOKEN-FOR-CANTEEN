@@ -1,7 +1,7 @@
 
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import type { Transaction, User } from '@/lib/types';
 import { useToast } from './use-toast';
 import { db } from '@/lib/firebase';
@@ -54,6 +54,7 @@ export function useCanteenPassState() {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
+  const seedingRef = useRef(false);
 
   const createSignature = (data: { employee_id: string, timestamp: string }) => {
     const dataString = `${data.employee_id}|${data.timestamp}|CanteenPass-Secret-Key`; // Added a static "secret"
@@ -70,6 +71,11 @@ export function useCanteenPassState() {
   // Seed database if it's empty
   useEffect(() => {
     const seedDatabase = async () => {
+        if (seedingRef.current) {
+            return;
+        }
+        seedingRef.current = true;
+        
         try {
             const usersCollection = collection(db, 'users');
             const snapshot = await getDocs(usersCollection);
